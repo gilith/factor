@@ -14,16 +14,12 @@ where
 import qualified Arithmetic.Random
 import Arithmetic.Prime.Factor (Factor)
 import qualified Arithmetic.Prime.Factor as Factor
---import qualified Arithmetic.Modular as Modular
---import qualified Arithmetic.Montgomery as Montgomery
 import qualified Arithmetic.Williams as Williams
---import qualified Data.List as List
 import qualified System.Environment as Environment
 import qualified System.Random
 import OpenTheory.Primitive.Natural
 import OpenTheory.Primitive.Random (Random)
 import qualified OpenTheory.Primitive.Random
---import qualified OpenTheory.Natural.Uniform as Uniform
 
 --------------------------------------------------------------------------------
 -- Natural number inputs
