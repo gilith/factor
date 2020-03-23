@@ -28,15 +28,15 @@ instance Show Gaussian where
       showIm (-1) = "-i"
       showIm i = show i ++ "i"
 
--------------------------------------------------------------------------------
--- Ring operations
--------------------------------------------------------------------------------
-
 real :: Integer -> Gaussian
 real = flip Gaussian 0
 
 imaginary :: Integer -> Gaussian
 imaginary = Gaussian 0
+
+-------------------------------------------------------------------------------
+-- Ring operations
+-------------------------------------------------------------------------------
 
 zero :: Gaussian
 zero = real 0
@@ -98,7 +98,7 @@ divides :: Gaussian -> Gaussian -> Bool
 divides x y = y == zero || (x /= zero && remainder y x == zero)
 
 -------------------------------------------------------------------------------
--- Every Euclidean domain a allows the definition of a greatest common
+-- Every Euclidean domain a admits the definition of a greatest common
 -- divisor function
 --
 --   egcd :: a -> a -> (a,(a,a))

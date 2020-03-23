@@ -15,11 +15,17 @@ description:
 
 Library
   build-depends:
-    base >= 4.0 && < 5.0
+    base >= 4.0 && < 5.0,
+    containers >= 0.5.7.1
   hs-source-dirs: src
   ghc-options: -Wall
   exposed-modules:
-    Factor.Gaussian
+    Factor.Gaussian,
+    Factor.Gfpx,
+    Factor.Nfs,
+    Factor.Prime,
+    Factor.Util,
+    Factor.Zx
 
 executable factor
   build-depends:
@@ -35,6 +41,7 @@ test-suite factor-test
   type: exitcode-stdio-1.0
   build-depends:
     base >= 4.0 && < 5.0,
+    containers >= 0.5.7.1,
     QuickCheck >= 2.4
   hs-source-dirs: src
   ghc-options: -Wall -fno-warn-orphans
