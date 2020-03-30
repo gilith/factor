@@ -10,9 +10,41 @@ portability: portable
 module Factor.Zx
 where
 
-import qualified Data.List as List
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IntMap
 
 import Factor.Util
+
+-------------------------------------------------------------------------------
+-- Monomials in Z[x]
+-------------------------------------------------------------------------------
+
+data Monomial =
+    Monomial
+      {degreeMonomial :: Int,
+       coeffMonomial :: Integer}
+  deriving (Eq,Ord)
+
+instance Show Monomial where
+  show m = if d == 0 then show n else showCoeff ++ showPower
+    where
+      Monomial {degreeMonomial = d, coeffMonomial = n} = m
+
+      showCoeff = case n of
+                    1 -> ""
+                    -1 -> "-"
+                    _ -> show n
+
+      showPower = "x" ++ (if d == 1 then "" else "^" ++ show d)
+
+isZeroMonomial :: Monomial -> Bool
+isZeroMonomial m = coeffMonomial m == 0
+
+constantMonomial :: Integer -> Monomial
+constantMonomial n = Monomial {degreeMonomial = 0, coeffMonomial = n}
+
+negateMonomial :: Monomial -> Monomial
+negateMonomial m = m {coeffMonomial = Prelude.negate (coeffMonomial m)}
 
 -------------------------------------------------------------------------------
 -- The polynomial ring Z[x]
@@ -21,49 +53,30 @@ import Factor.Util
 data Zx =
     Zx
       {degree :: Int,
-       coeff :: [Integer]}
-  deriving (Ord)
-
-instance Eq Zx where
-  (==) f g = coeff f == coeff g
+       coeffMap :: IntMap Integer}
+  deriving (Eq,Ord)
 
 instance Show Zx where
-  show f = case reverse (coeff f) of
+  show f = case reverse (toMonomials f) of
              [] -> "0"
-             n : c -> let (d,l) = foldr showCoeff (0,[]) c in
-                      concat (showMonomial n d ++ l)
+             m : ms -> concat (show m : map showMonomial ms)
     where
-      showCoeff n (d,l) = (d + 1, showLaterMonomial n d ++ l)
-
-      showLaterMonomial 0 _ = []
-      showLaterMonomial n d | n < 0 = " - " : showMonomial (-n) d
-      showLaterMonomial n d | otherwise = " + " : showMonomial n d
-
-      showMonomial n 0 = [show n]
-      showMonomial n d = showPowerCoeff n ++ showPower d
-
-      showPowerCoeff 1 = []
-      showPowerCoeff (-1) = ["-"]
-      showPowerCoeff n = [show n]
-
-      showPower :: Int -> [String]
-      showPower d = "x" : (if d == 1 then [] else ["^", show d])
+      showMonomial m | coeffMonomial m < 0 = " - " ++ show (negateMonomial m)
+      showMonomial m | otherwise = " + " ++ show m
 
 valid :: Zx -> Bool
 valid f =
-    normCoeff c == c &&
-    degree f == length c - 1
+    all (not . isZeroMonomial) ms &&
+    (if null ms then d == -1 else 0 <= head ds && d == last ds)
   where
-    c = coeff f
+    d = degree f
+    ms = toMonomials f
+    ds = map degreeMonomial ms
 
-normCoeff :: [Integer] -> [Integer]
-normCoeff = List.dropWhileEnd ((==) 0)
-
-fromNormCoeff :: [Integer] -> Zx
-fromNormCoeff c = Zx {degree = length c - 1, coeff = c}
-
-fromCoeff :: [Integer] -> Zx
-fromCoeff = fromNormCoeff . normCoeff
+fromNormCoeffMap :: IntMap Integer -> Zx
+fromNormCoeffMap c | IntMap.null c = zero
+fromNormCoeffMap c | otherwise = Zx {degree = d, coeffMap = c}
+  where (d,_) = IntMap.findMax c
 
 -------------------------------------------------------------------------------
 -- Polynomial operations
@@ -79,80 +92,101 @@ isLinear :: Zx -> Bool
 isLinear f = degree f <= 1
 
 isMonic :: Zx -> Bool
-isMonic f = not (isZero f) && last (coeff f) == 1
+isMonic f = not (isZero f) && powerCoeff f (degree f) == 1
+
+powerCoeff :: Zx -> Int -> Integer
+powerCoeff f i = IntMap.findWithDefault 0 i (coeffMap f)
+
+monomials :: Zx -> [(Int,Integer)]
+monomials = IntMap.toAscList . coeffMap
+
+lengthMonomials :: Zx -> Int
+lengthMonomials = IntMap.size . coeffMap
+
+filterMonomials :: (Int -> Integer -> Bool) -> Zx -> Zx
+filterMonomials p = fromNormCoeffMap . IntMap.filterWithKey p . coeffMap
 
 constant :: Integer -> Zx
-constant n = fromCoeff [n]
+constant = monomial 0
 
-monomial :: Integer -> Int -> Zx
-monomial n d = multiplyPower d $ constant n
+variable :: Zx
+variable = monomial 1 1
+
+monomial :: Int -> Integer -> Zx
+monomial _ 0 = zero
+monomial d n = Zx {degree = d, coeffMap = IntMap.singleton d n}
 
 evaluate :: Zx -> Integer -> Integer
-evaluate f x = foldr fma 0 (coeff f)
-  where fma c z = z*x + c
+evaluate f x = align 0 $ IntMap.foldrWithKey fma (0,0) $ coeffMap f
+  where
+    fma i n z = (i, align i z + n)
+    align i (d,n) = let k = d - i in if k <= 0 then n else x^k * n
+
+derivative :: Zx -> Zx
+derivative (Zx {degree = d, coeffMap = c}) =
+    if d <= 0 then zero
+    else multiplyPower (-1) $ Zx {degree = d, coeffMap = deriv c}
+  where
+    deriv = IntMap.mapWithKey multDeg . IntMap.delete 0
+    multDeg i n = toInteger i * n
+
+fromMonomial :: Monomial -> Zx
+fromMonomial (Monomial {degreeMonomial = d, coeffMonomial = n}) = monomial d n
+
+fromMonomials :: [Monomial] -> Zx
+fromMonomials = Factor.Zx.sum . map fromMonomial
+
+toMonomials :: Zx -> [Monomial]
+toMonomials = map mk . monomials
+  where mk (d,n) = Monomial {degreeMonomial = d, coeffMonomial = n}
+
+fromCoeff :: [Integer] -> Zx
+fromCoeff = Factor.Zx.sum . zipWith monomial [0..]
 
 -------------------------------------------------------------------------------
 -- Ring operations
 -------------------------------------------------------------------------------
 
 zero :: Zx
-zero = Factor.Zx.constant 0
+zero = Zx {degree = -1, coeffMap = IntMap.empty}
 
 one :: Zx
-one = Factor.Zx.constant 1
+one = constant 1
 
 negate :: Zx -> Zx
-negate f = f {coeff = map Prelude.negate (coeff f)}
+negate f | isZero f = zero
+negate f = f {coeffMap = IntMap.map Prelude.negate (coeffMap f)}
 
 add :: Zx -> Zx -> Zx
-add f g =
-    case compare fd gd of
-      LT -> g {coeff = zipWith (+) fc gc ++ drop (fd + 1) gc}
-      EQ -> fromCoeff (zipWith (+) fc gc)
-      GT -> f {coeff = zipWith (+) fc gc ++ drop (gd + 1) fc}
+add f g | isZero f = g
+add f g | isZero g = f
+add f g | otherwise = fromNormCoeffMap c
   where
-    Zx {degree = fd, coeff = fc} = f
-    Zx {degree = gd, coeff = gc} = g
+    c = IntMap.mergeWithKey addCoeff id id (coeffMap f) (coeffMap g)
+    addCoeff _ fn gn = let n = fn + gn in if n == 0 then Nothing else Just n
+
+sum :: [Zx] -> Zx
+sum = foldr add zero
 
 subtract :: Zx -> Zx -> Zx
 subtract f g = add f (Factor.Zx.negate g)
 
 multiply :: Zx -> Zx -> Zx
-multiply f g =
-    if fd < 0 || gd < 0 then zero
-    else Zx {degree = fd + gd, coeff = go [] fc}
-  where
-    go acc [] = acc
-    go acc (fch : fct) = s : go acc' fct
-      where (s,acc') = advance $ update acc fch
-
-    advance [] = (0,[])
-    advance (s : acc) = (s,acc)
-
-    update acc 0 = acc
-    update acc fch = fma acc fch gc
-
-    fma [] y zs = map ((*) y) zs
-    fma xs _ [] = xs
-    fma (x : xs) y (z : zs) = (x + y*z) : fma xs y zs
-
-    Zx {degree = fd, coeff = fc} = f
-    Zx {degree = gd, coeff = gc} = g
+multiply f g | lengthMonomials g < lengthMonomials f = multiply g f
+multiply f _ | isZero f = zero
+multiply f g | otherwise = IntMap.foldrWithKey fma zero (coeffMap f)
+  where fma i n z = add (multiplyPower i (multiplyConstant n g)) z
 
 multiplyConstant :: Integer -> Zx -> Zx
 multiplyConstant 0 _ = zero
 multiplyConstant 1 f = f
-multiplyConstant n f = multiply (constant n) f
+multiplyConstant n f = f {coeffMap = IntMap.map ((*) n) (coeffMap f)}
 
 multiplyPower :: Int -> Zx -> Zx
-multiplyPower d f =
-    if d == 0 || fd < 0 then f
-    else Zx {degree = fd + d, coeff = replicate d 0 ++ fc}
-  where
-    Zx {degree = fd, coeff = fc} = f
-
-multiplyMonomial :: Integer -> Int -> Zx -> Zx
-multiplyMonomial n d f = multiplyPower d $ multiplyConstant n f
+multiplyPower 0 f = f
+multiplyPower i (Zx {degree = d, coeffMap = c}) =
+    if d < 0 then zero
+    else Zx {degree = d + i, coeffMap = IntMap.mapKeysMonotonic ((+) i) c}
 
 -------------------------------------------------------------------------------
 -- Division
@@ -162,17 +196,19 @@ division :: Zx -> Zx -> (Zx,Zx)
 division f0 g = if gd < 0 then error "Zx.division by zero" else go zero f0
   where
     go q f =
-        let d = degree f - gd in
+        let fd = degree f in
+        let d = fd - gd in
         if d < 0 then (q,f)
-        else case gDiv (last (coeff f)) of
+        else case gDiv (powerCoeff f fd) of
                Nothing -> (q,f)
                Just n -> go q' f'
                  where
                    -- f - n^d*g = q*g + r ==> f = (q + n^d)*g + r
-                   q' = add q (monomial n d)
-                   f' = Factor.Zx.subtract f (multiplyMonomial n d g)
+                   q' = add q m
+                   f' = Factor.Zx.subtract f (multiply m g)
+                   m = monomial d n
     gd = degree g
-    gDiv = multiple (last (coeff g))
+    gDiv = multiple (powerCoeff g gd)
 
 quotient :: Zx -> Zx -> Zx
 quotient f g = fst $ Factor.Zx.division f g
@@ -191,19 +227,16 @@ divides f g = isZero g || (not (isZero f) && isZero (remainder g f))
 
 content :: Zx -> Integer
 content f =
-    case coeff f of
-      [] -> 1
-      h : t -> go (abs h) t
-  where
-    go 1 _ = 1
-    go c [] = c
-    go c (h : t) = go (gcd c h) t
+    case IntMap.minView (coeffMap f) of
+      Nothing -> 1
+      Just (h,t) -> IntMap.foldl gcd (abs h) t
 
 isPrimitive :: Zx -> Bool
 isPrimitive = ((==) 1) . content
 
 primitive :: Zx -> Zx
-primitive f = if g == 1 then f else f {coeff = map gDiv (coeff f)}
+primitive f =
+    if g == 1 then f else f {coeffMap = IntMap.map gDiv (coeffMap f)}
   where
     g = content f
     gDiv = flip div g

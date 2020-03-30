@@ -34,10 +34,14 @@ list = 2 : 3 : sieve 5 ((9,6),Set.empty)
 
     next kp p s = Set.deleteFindMin (Set.insert (kp + p, p) s)
 
+-------------------------------------------------------------------------------
+-- Trial division
+-------------------------------------------------------------------------------
+
 factor :: [Prime] -> Integer -> ([(Prime,Int)],Integer)
 factor _ 0 = ([],0)
 factor ps n | n < 0 = (pks, Prelude.negate s)
-  where (pks,s) = Factor.Prime.factor ps (Prelude.negate n)
+  where (pks,s) = factor ps (Prelude.negate n)
 factor ps0 n0 | otherwise = go ps0 n0
   where
     go _ 1 = ([],1)
@@ -45,7 +49,10 @@ factor ps0 n0 | otherwise = go ps0 n0
     go (p : ps) n = (if k == 0 then pks else (p,k) : pks, s)
       where
         (pks,s) = go ps m
-        (k,m) = Factor.Util.factor p n
+        (k,m) = divPower p n
+
+trialDivision :: Integer -> ([(Prime,Int)],Integer)
+trialDivision = factor list
 
 -------------------------------------------------------------------------------
 -- The field GF(p) of arithmetic modulo a prime
@@ -55,6 +62,9 @@ type Gfp = Integer
 
 valid :: Prime -> Gfp -> Bool
 valid p x = 0 <= x && x < p
+
+fromInt :: Prime -> Int -> Gfp
+fromInt p = Factor.Prime.fromInteger p . toInteger
 
 fromInteger :: Prime -> Integer -> Gfp
 fromInteger p n = n `mod` p
@@ -71,6 +81,26 @@ subtract p x y = add p x (Factor.Prime.negate p y)
 
 multiply :: Prime -> Gfp -> Gfp -> Gfp
 multiply p x y = Factor.Prime.fromInteger p (x * y)
+
+square :: Prime -> Gfp -> Gfp
+square p x = multiply p x x
+
+multiplyExp :: Prime -> Gfp -> Gfp -> Integer -> Gfp
+multiplyExp _ 0 _ _ = 0
+multiplyExp _ z _ 0 = z
+multiplyExp _ _ 0 _ = 0
+multiplyExp p z0 x0 k0 = go z0 x0 k0
+  where
+    go z _ 0 = z
+    go z 1 _ = z
+    go z x k = go z' x' k'
+      where
+        z' = if even k then z else multiply p z x
+        x' = square p x
+        k' = k `div` 2
+
+exp :: Prime -> Gfp -> Integer -> Gfp
+exp p = multiplyExp p 1
 
 invert :: Prime -> Gfp -> Gfp
 invert p x =

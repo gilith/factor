@@ -27,11 +27,6 @@ divides _ 0 = True
 divides 0 _ = False
 divides m n = n `mod` m == 0
 
-factor :: Integer -> Integer -> (Int,Integer)
-factor m | m <= 1 = error "Integer factor: argument must be positive non-unit"
-factor m | otherwise = \n -> if n == 0 then (0,0) else go 0 n
-  where go k n = if divides m n then go (k+1) (n `div` m) else (k,n)
-
 -------------------------------------------------------------------------------
 -- Integer division
 -------------------------------------------------------------------------------
@@ -54,6 +49,11 @@ multiple 1 = Just
 multiple (-1) = Just . negate
 multiple m = \n -> if divides m n then Just (n `div` m) else Nothing
 
+divPower :: Integer -> Integer -> (Int,Integer)
+divPower m | m <= 1 = error "divPower argument must be positive non-unit"
+divPower m | otherwise = \n -> if n == 0 then (0,0) else go 0 n
+  where go k n = if divides m n then go (k+1) (n `div` m) else (k,n)
+
 -------------------------------------------------------------------------------
 -- Integer greatest common divisor
 -------------------------------------------------------------------------------
@@ -65,6 +65,9 @@ egcd m n =
   where
     (g,(s,t)) = egcd n r
     (q,r) = division m n
+
+coprime :: Integer -> Integer -> Bool
+coprime m n = gcd m n == 1
 
 -------------------------------------------------------------------------------
 -- Integer nth root function [1] satisfying

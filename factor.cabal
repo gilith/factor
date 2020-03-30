@@ -23,6 +23,7 @@ Library
     Factor.Gaussian,
     Factor.Gfpx,
     Factor.Nfs,
+    Factor.Nfzw,
     Factor.Prime,
     Factor.Util,
     Factor.Zx
