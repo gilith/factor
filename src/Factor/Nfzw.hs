@@ -19,10 +19,6 @@ import qualified Factor.Zx as Zx
 
 -------------------------------------------------------------------------------
 -- Elements of Z[w] having the form a + b*w with a and b coprime integers
---
--- The norm of such an element a + b*w is explicitly computed to be
---
---   norm (a + b*w) == (-b)^d * f(-a/b)
 -------------------------------------------------------------------------------
 
 data Nfzw = Nfzw Integer Integer
@@ -39,11 +35,41 @@ instance Show Nfzw where
       showW (-1) = "-w"
       showW i = show i ++ "w"
 
+valid :: Nfzw -> Bool
+valid (Nfzw 0 0) = True
+valid (Nfzw a b) = coprime a b
+
+-------------------------------------------------------------------------------
+-- All valid elements a + bw where b > 0
+-------------------------------------------------------------------------------
+
+list :: [Nfzw]
+list = filter valid $ concatMap line [0..]
+  where line k = map (\a -> Nfzw a (k + 1 - abs a)) [(-k)..k]
+
+-------------------------------------------------------------------------------
+-- Ring operations
+-------------------------------------------------------------------------------
+
 zero :: Nfzw
 zero = Nfzw 0 0
 
 isZero :: Nfzw -> Bool
 isZero x = x == zero
+
+negate :: Nfzw -> Nfzw
+negate (Nfzw a b) = Nfzw (Prelude.negate a) (Prelude.negate b)
+
+-------------------------------------------------------------------------------
+-- Ring homomorphisms from a + bw to Z
+-------------------------------------------------------------------------------
+
+toInteger :: Integer -> Nfzw -> Integer
+toInteger m (Nfzw a b) = a + b*m
+
+-------------------------------------------------------------------------------
+-- The norm of an element a - bw is b^degree(f) * f(a/b)
+-------------------------------------------------------------------------------
 
 norm :: Zx -> Nfzw -> Integer
 norm f (Nfzw a b) =
@@ -57,7 +83,7 @@ norm f (Nfzw a b) =
         ni = nd * a^k
         bi = bd * b'^k
 
-    b' = negate b
+    b' = Prelude.negate b
 
 -------------------------------------------------------------------------------
 -- First degree prime ideals of Z[w]

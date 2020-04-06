@@ -96,6 +96,38 @@ nthRootClosest n k =
     p = nthRoot n k
 
 -------------------------------------------------------------------------------
+-- The Jacobi symbol (m/n)
+--
+-- The n argument must be a positive odd integer
+-------------------------------------------------------------------------------
+
+data Residue = Residue | NonResidue | ZeroResidue
+  deriving (Eq,Ord,Show)
+
+multiplyResidue :: Residue -> Residue -> Residue
+multiplyResidue ZeroResidue _ = ZeroResidue
+multiplyResidue _ ZeroResidue = ZeroResidue
+multiplyResidue r1 r2 = if r1 == r2 then Residue else NonResidue
+
+jacobiSymbol :: Integer -> Integer -> Residue
+jacobiSymbol =
+    \m n -> if n == 1 then Residue else go False m n
+  where
+    go f m n =  -- Invariant: n is a positive odd integer greater than 1
+        if p == 0 then ZeroResidue
+        else if s == 1 then if g then NonResidue else Residue
+        else go h n s
+      where
+        p = m `mod` n
+        (r,s) = divPower 2 p
+        n8 = n `mod` 8
+        n8_17 = n8 == 1 || n8 == 7
+        n4_1 = n8 == 1 || n8 == 5
+        s4_1 = s `mod` 4 == 1
+        g = if even r || n8_17 then f else not f
+        h = if n4_1 || s4_1 then g else not g
+
+-------------------------------------------------------------------------------
 -- Making lists
 -------------------------------------------------------------------------------
 
@@ -117,6 +149,18 @@ unfoldrN f = go []
   where
     go xs 0 s = (reverse xs, s)
     go xs n s = go (x : xs) (n - 1) s' where (x,s') = f s
+
+-------------------------------------------------------------------------------
+-- Abbreviated lists
+-------------------------------------------------------------------------------
+
+abbrevList :: [String] -> String
+abbrevList l = concat (map (\x -> "\n  " ++ x) m)
+  where
+    i = 3
+    m = if n <= 2*i + 1 then l else take i l ++ o ++  drop (n - i) l
+    o = ["[... " ++ show (n - 2*i) ++ " omitted ...]"]
+    n = length l
 
 -------------------------------------------------------------------------------
 -- Pretty-print a table

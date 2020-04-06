@@ -92,6 +92,9 @@ monomial :: Int -> Gfp -> Gfpx
 monomial _ 0 = zero
 monomial d x = Gfpx {degree = d, coeffMap = IntMap.singleton d x}
 
+simpleRoot :: Prime -> Gfp -> Gfpx
+simpleRoot p r = Factor.Gfpx.subtract p variable (constant r)
+
 evaluate :: Prime -> Gfpx -> Gfp -> Gfp
 evaluate p f x = align 0 $ IntMap.foldrWithKey fma (0,0) $ coeffMap f
   where
@@ -122,6 +125,10 @@ fromZx p = fromNormCoeffMap . IntMap.mapMaybe f . Zx.coeffMap
 
 toZx :: Gfpx -> Zx
 toZx (Gfpx {degree = d, coeffMap = c}) = Zx.Zx {Zx.degree = d, Zx.coeffMap = c}
+
+toSmallestZx :: Prime -> Gfpx -> Zx
+toSmallestZx p (Gfpx {degree = d, coeffMap = c}) =
+    Zx.Zx {Zx.degree = d, Zx.coeffMap = IntMap.map (Prime.toSmallestInteger p) c}
 
 -------------------------------------------------------------------------------
 -- Ring operations
@@ -161,6 +168,9 @@ multiply p f g | otherwise = IntMap.foldrWithKey fma zero (coeffMap f)
 
 square :: Prime -> Gfpx -> Gfpx
 square p f = multiply p f f
+
+product :: Prime -> [Gfpx] -> Gfpx
+product p = foldr (multiply p) one
 
 multiplyConstant :: Prime -> Gfp -> Gfpx -> Gfpx
 multiplyConstant _ 0 _ = zero
@@ -248,6 +258,15 @@ egcd p = go
 gcd :: Prime -> Gfpx -> Gfpx -> Gfpx
 gcd p x y = fst $ egcd p x y
 
+chineseRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx -> Gfpx
+chineseRemainder p f g =
+    \x y -> remainder p (add p (multiply p x tg) (multiply p y sf)) fg
+  where
+    (_,(s,t)) = egcd p f g
+    fg = multiply p f g
+    sf = multiply p s f
+    tg = multiply p t g
+
 -------------------------------------------------------------------------------
 -- Polynomial composition
 -------------------------------------------------------------------------------
@@ -325,6 +344,10 @@ roots p | otherwise =
     -- x + 1
     x1 = add p (monomial 1 1) one
 
+totallySplits :: Zx -> Prime -> Maybe [Gfp]
+totallySplits f p = if length rs == Zx.degree f then Just rs else Nothing
+  where rs = roots p (fromZx p f)
+
 -------------------------------------------------------------------------------
 -- A monic polynomial f of degree d is irreducible in GF(p)[x] if:
 --
@@ -344,3 +367,17 @@ irreducible p f =
     -- x^(p^(d/e)) - x
     xpde e = Factor.Gfpx.subtract p (expRemainder p f variable pde) variable
       where pde = p ^ (d `div` e)
+
+-------------------------------------------------------------------------------
+-- Given a polynomial f in Z[x], use Hensel's Lemma to lift a root r
+-- modulo p to a sequence of roots r_k modulo p^k.
+-------------------------------------------------------------------------------
+
+liftRoot :: Zx -> Prime -> Gfp -> [(Integer,Integer)]
+liftRoot f p r = go p r
+  where
+     a = Prime.invert p (evaluate p (derivative p (fromZx p f)) r)
+     go pk rk = (pk,rk) : go pk' rk'
+       where
+          pk' = pk * p
+          rk' = (rk - evaluate pk' (fromZx pk' f) rk * a) `mod` pk'

@@ -116,6 +116,9 @@ monomial :: Int -> Integer -> Zx
 monomial _ 0 = zero
 monomial d n = Zx {degree = d, coeffMap = IntMap.singleton d n}
 
+simpleRoot :: Integer -> Zx
+simpleRoot r = Factor.Zx.subtract variable (constant r)
+
 evaluate :: Zx -> Integer -> Integer
 evaluate f x = align 0 $ IntMap.foldrWithKey fma (0,0) $ coeffMap f
   where
@@ -176,6 +179,12 @@ multiply f g | lengthMonomials g < lengthMonomials f = multiply g f
 multiply f _ | isZero f = zero
 multiply f g | otherwise = IntMap.foldrWithKey fma zero (coeffMap f)
   where fma i n z = add (multiplyPower i (multiplyConstant n g)) z
+
+square :: Zx -> Zx
+square f = multiply f f
+
+product :: [Zx] -> Zx
+product = foldr multiply one
 
 multiplyConstant :: Integer -> Zx -> Zx
 multiplyConstant 0 _ = zero

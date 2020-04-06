@@ -16,7 +16,8 @@ import Test.QuickCheck
 import Factor.Gaussian (Gaussian(..))
 import qualified Factor.Gaussian as Gaussian
 import qualified Factor.Gfpx as Gfpx
-import Factor.Nfs (Row)
+import Factor.Nfs (PolynomialBase(..),PolynomialCoeff(..),PolynomialConfig(..),
+                   Row)
 import qualified Factor.Nfs as Nfs
 import Factor.Nfzw (Nfzw(..))
 import qualified Factor.Nfzw as Nfzw
@@ -58,6 +59,14 @@ assert = checkWith $ stdArgs {maxSuccess = 1}
 -------------------------------------------------------------------------------
 -- Testing the utility functions
 -------------------------------------------------------------------------------
+
+data PositiveOddInteger = PositiveOddInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary PositiveOddInteger where
+  arbitrary = do
+    NonNegative n <- arbitrary
+    return $ PositiveOddInteger (2*n + 1)
 
 integerDivision :: Integer -> (NonZero Integer) -> Bool
 integerDivision m (NonZero n) =
@@ -118,6 +127,37 @@ integerNthRootClosest (Positive n) (NonNegative k) =
   where
     p = nthRootClosest n k
 
+integerJacobiSymbolZero :: Integer -> PositiveOddInteger -> Bool
+integerJacobiSymbolZero m (PositiveOddInteger n) =
+    (jacobiSymbol m n == ZeroResidue) == not (coprime m n)
+
+integerJacobiSymbolPrime :: Integer -> Positive Int -> Bool
+integerJacobiSymbolPrime m (Positive p0) =
+    case jacobiSymbol m p of
+      ZeroResidue -> True
+      Residue -> res
+      NonResidue -> not res
+  where
+    p = Prime.list !! p0  -- Odd prime
+    res = any (\i -> Prime.square p i == Prime.fromInteger p m) [1..(p-1)]
+
+integerJacobiSymbolSquare :: Integer -> PositiveOddInteger -> Bool
+integerJacobiSymbolSquare m (PositiveOddInteger n) =
+    jacobiSymbol (m * m) n == if coprime m n then Residue else ZeroResidue
+
+integerJacobiSymbolMultiplicativeNumerator ::
+    Integer -> Integer -> PositiveOddInteger -> Bool
+integerJacobiSymbolMultiplicativeNumerator m1 m2 (PositiveOddInteger n) =
+    jacobiSymbol (m1 * m2) n ==
+    multiplyResidue (jacobiSymbol m1 n) (jacobiSymbol m2 n)
+
+integerJacobiSymbolMultiplicativeDenominator ::
+  Integer -> PositiveOddInteger -> PositiveOddInteger -> Bool
+integerJacobiSymbolMultiplicativeDenominator
+  m (PositiveOddInteger n1) (PositiveOddInteger n2) =
+    jacobiSymbol m (n1 * n2) ==
+    multiplyResidue (jacobiSymbol m n1) (jacobiSymbol m n2)
+
 testUtil :: IO ()
 testUtil = do
     test ("Integer division is correct",integerDivision)
@@ -128,6 +168,11 @@ testUtil = do
     test ("Integer extended gcd agrees with built-in gcd",integerEgcdGcd)
     test ("Integer nth root is correct",integerNthRoot)
     test ("Integer closest nth root is correct",integerNthRootClosest)
+    test ("Integer Jacobi symbol is zero iff not coprime",integerJacobiSymbolZero)
+    test ("Integer Jacobi symbol for primes calculates residues",integerJacobiSymbolPrime)
+    test ("Integer Jacobi symbol for squares is residue (or zero)",integerJacobiSymbolSquare)
+    test ("Integer Jacobi symbol is multiplicative on numerators",integerJacobiSymbolMultiplicativeNumerator)
+    test ("Integer Jacobi symbol is multiplicative on denominators",integerJacobiSymbolMultiplicativeDenominator)
 
 -------------------------------------------------------------------------------
 -- Testing Gaussian integers
@@ -367,6 +412,12 @@ primeInvert (PrimeInteger p) n =
     x = Prime.fromInteger p n
     y = Prime.invert p x
 
+primeSqrt :: PrimeInteger -> Integer -> Bool
+primeSqrt (PrimeInteger p) n =
+    (Prime.square p (Prime.sqrt p x) /= x) == Prime.nonResidue p n
+  where
+    x = Prime.fromInteger p n
+
 testPrime :: IO ()
 testPrime = do
     test ("Prime integers form a monotonic list starting at 2",primeMonotonic)
@@ -375,6 +426,7 @@ testPrime = do
     test ("Prime trial division factors all integers",primeTrialDivision)
     test ("Prime exponentiation satisfies Fermat's little theorem",primeFermat)
     test ("Prime inverse is correct",primeInvert)
+    test ("Prime square root is correct",primeSqrt)
 
 -------------------------------------------------------------------------------
 -- Testing the polynomial ring GF(p)[x]
@@ -500,7 +552,7 @@ gfpxEgcd (PrimeInteger p) f0 g0 =
     Gfpx.divides p h f &&
     Gfpx.divides p h g &&
     Gfpx.add p (Gfpx.multiply p s f) (Gfpx.multiply p t g) == h &&
-    (Gfpx.isZero h || Gfpx.powerCoeff h (Gfpx.degree h) == 1)
+    (Gfpx.isZero h || Gfpx.isMonic h)
   where
     (h,(s,t)) = Gfpx.egcd p f g
     f = Gfpx.fromZx p f0
@@ -595,6 +647,11 @@ nfzwNormZero (NfzwZx f) x =
     isZero (Nfzw a (-1)) = Zx.evaluate f a == 0
     isZero _ = False
 
+nfzwNormNegate :: NfzwZx -> Nfzw -> Bool
+nfzwNormNegate (NfzwZx f) x =
+    Nfzw.norm f (Nfzw.negate x) ==
+    (if even (Zx.degree f) then id else negate) (Nfzw.norm f x)
+
 nfzwNormFactor :: NfzwZx -> Nfzw -> Bool
 nfzwNormFactor (NfzwZx f) x =
     null rps ||
@@ -608,6 +665,7 @@ nfzwNormFactor (NfzwZx f) x =
 testNfzw :: IO ()
 testNfzw = do
     test ("Z[w] norm is zero iff element is zero",nfzwNormZero)
+    test ("Z[w] norm of negation is (-1)^degree(f) * norm",nfzwNormNegate)
     testN 1 ("Z[w] norm factorization matches ideal membership",nfzwNormFactor)
 
 -------------------------------------------------------------------------------
@@ -625,6 +683,22 @@ instance Arbitrary NfsInteger where
     let n = m + 2*n0
     return $ NfsInteger (m * n)
 
+instance Arbitrary PolynomialBase where
+  arbitrary = elements [ClosestPolynomialBase,FloorPolynomialBase]
+
+instance Arbitrary PolynomialCoeff where
+  arbitrary = elements [SmallestPolynomialCoeff,PositivePolynomialCoeff]
+
+instance Arbitrary PolynomialConfig where
+  arbitrary = do
+    Positive deg <- arbitrary
+    base <- arbitrary
+    coeff <- arbitrary
+    return $ PolynomialConfig
+               {polynomialDegree = deg,
+                polynomialBase = base,
+                polynomialCoeff = coeff}
+
 data NfsMatrix = NfsMatrix [Row]
   deriving (Eq,Ord,Show)
 
@@ -639,33 +713,35 @@ instance Arbitrary NfsMatrix where
 nfsIrreduciblePolynomial :: ZxMonicNotOne -> ZxMonicNotOne -> Bool
 nfsIrreduciblePolynomial (ZxMonicNotOne f) (ZxMonicNotOne g) =
     toInteger (Zx.degree h) > maxDegree `div` 5 ||
-    not (Nfs.irreduciblePolynomial h)
+    (case Nfs.irreduciblePolynomial h of
+       Nothing -> True
+       Just _ -> False)
   where
     h = Zx.multiply f g
 
-nfsSelectPolynomialBase :: Bool -> NfsInteger -> Positive Int -> Bool
-nfsSelectPolynomialBase pos (NfsInteger n) (Positive d) =
+nfsSelectPolynomialBase :: PolynomialConfig -> NfsInteger -> Bool
+nfsSelectPolynomialBase cfg (NfsInteger n) =
     Zx.isMonic f &&
-    Zx.degree f == d &&
+    Zx.degree f == Nfs.polynomialDegree cfg &&
     Zx.evaluate f m == n
   where
-    (f,m) = Nfs.selectPolynomialBase pos n d
+    (f,m) = Nfs.selectPolynomial cfg n
 
 nfsGaussianElimination :: NfsMatrix -> Bool
 nfsGaussianElimination (NfsMatrix m) =
     length bs >= r - c &&
-    all sumRowsTrue bs
+    all sumRowsZero bs
   where
     r = length m
     c = length (head m)
 
     bs = Nfs.gaussianElimination m
 
-    sumRowsTrue b =
+    sumRowsZero b =
         length b > 0 &&
-        all id (foldr addRow (replicate c True) b)
+        all not (foldr addRow (replicate c False) b)
       where
-        addRow i s = zipWith (==) (m !! i) s
+        addRow i s = zipWith (/=) (m !! i) s
 
 testNfs :: IO ()
 testNfs = do
