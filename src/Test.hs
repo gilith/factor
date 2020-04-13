@@ -17,7 +17,7 @@ import Factor.Gaussian (Gaussian(..))
 import qualified Factor.Gaussian as Gaussian
 import qualified Factor.Gfpx as Gfpx
 import Factor.Nfs (PolynomialBase(..),PolynomialCoeff(..),PolynomialConfig(..),
-                   Row)
+                   PolynomialDegree(..),FactorBase,Row)
 import qualified Factor.Nfs as Nfs
 import Factor.Nfzw (Nfzw(..))
 import qualified Factor.Nfzw as Nfzw
@@ -127,6 +127,10 @@ integerNthRootClosest (Positive n) (NonNegative k) =
   where
     p = nthRootClosest n k
 
+integerLog2Floor :: Positive Integer -> Bool
+integerLog2Floor (Positive n) =
+    floor (log2Integer n) == widthInteger n - 1
+
 integerJacobiSymbolZero :: Integer -> PositiveOddInteger -> Bool
 integerJacobiSymbolZero m (PositiveOddInteger n) =
     (jacobiSymbol m n == ZeroResidue) == not (coprime m n)
@@ -168,6 +172,7 @@ testUtil = do
     test ("Integer extended gcd agrees with built-in gcd",integerEgcdGcd)
     test ("Integer nth root is correct",integerNthRoot)
     test ("Integer closest nth root is correct",integerNthRootClosest)
+    test ("Integer width is floor of log2 plus 1",integerLog2Floor)
     test ("Integer Jacobi symbol is zero iff not coprime",integerJacobiSymbolZero)
     test ("Integer Jacobi symbol for primes calculates residues",integerJacobiSymbolPrime)
     test ("Integer Jacobi symbol for squares is residue (or zero)",integerJacobiSymbolSquare)
@@ -652,12 +657,14 @@ nfzwNormNegate (NfzwZx f) x =
     Nfzw.norm f (Nfzw.negate x) ==
     (if even (Zx.degree f) then id else negate) (Nfzw.norm f x)
 
-nfzwNormFactor :: NfzwZx -> Nfzw -> Bool
-nfzwNormFactor (NfzwZx f) x =
+nfzwNormIdeal :: NfzwZx -> Nfzw -> Bool
+nfzwNormIdeal (NfzwZx f) x =
+    abs n > 1000 ||
     null rps ||
     rps == aps
   where
-    rps = map fst $ fst $ Prime.trialDivision $ Nfzw.norm f x
+    n = Nfzw.norm f x
+    rps = map fst $ fst $ Prime.trialDivision n
     max_rp = last rps
     aps = map snd $ filter (Nfzw.inIdeal x) $
           takeWhile (\(_,p) -> p <= max_rp) $ Nfzw.ideals f
@@ -666,7 +673,7 @@ testNfzw :: IO ()
 testNfzw = do
     test ("Z[w] norm is zero iff element is zero",nfzwNormZero)
     test ("Z[w] norm of negation is (-1)^degree(f) * norm",nfzwNormNegate)
-    testN 1 ("Z[w] norm factorization matches ideal membership",nfzwNormFactor)
+    test ("Z[w] norm factorization matches ideal membership",nfzwNormIdeal)
 
 -------------------------------------------------------------------------------
 -- Testing the number field sieve
@@ -683,6 +690,11 @@ instance Arbitrary NfsInteger where
     let n = m + 2*n0
     return $ NfsInteger (m * n)
 
+instance Arbitrary PolynomialDegree where
+  arbitrary = do
+    Positive d <- arbitrary
+    elements [FixedPolynomialDegree d, OptimalPolynomialDegree]
+
 instance Arbitrary PolynomialBase where
   arbitrary = elements [ClosestPolynomialBase,FloorPolynomialBase]
 
@@ -691,13 +703,21 @@ instance Arbitrary PolynomialCoeff where
 
 instance Arbitrary PolynomialConfig where
   arbitrary = do
-    Positive deg <- arbitrary
+    degree <- arbitrary
     base <- arbitrary
     coeff <- arbitrary
     return $ PolynomialConfig
-               {polynomialDegree = deg,
+               {polynomialDegree = degree,
                 polynomialBase = base,
                 polynomialCoeff = coeff}
+
+data NfsFactorBase = NfsFactorBase FactorBase
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary NfsFactorBase where
+  arbitrary = do
+    NonNegative n <- arbitrary
+    return $ NfsFactorBase (take n Prime.list)
 
 data NfsMatrix = NfsMatrix [Row]
   deriving (Eq,Ord,Show)
@@ -722,10 +742,13 @@ nfsIrreduciblePolynomial (ZxMonicNotOne f) (ZxMonicNotOne g) =
 nfsSelectPolynomialBase :: PolynomialConfig -> NfsInteger -> Bool
 nfsSelectPolynomialBase cfg (NfsInteger n) =
     Zx.isMonic f &&
-    Zx.degree f == Nfs.polynomialDegree cfg &&
+    Zx.degree f >= 1 &&
     Zx.evaluate f m == n
   where
     (f,m) = Nfs.selectPolynomial cfg n
+
+nfsSmoothIntegerNonZero :: NfsFactorBase -> Bool
+nfsSmoothIntegerNonZero (NfsFactorBase fb) = not (Nfs.isSmoothInteger fb 0)
 
 nfsGaussianElimination :: NfsMatrix -> Bool
 nfsGaussianElimination (NfsMatrix m) =
@@ -747,6 +770,7 @@ testNfs :: IO ()
 testNfs = do
     testN 100 ("NFS polynomial irreducibility has no false positives",nfsIrreduciblePolynomial)
     test ("NFS base m polynomial selection is correct",nfsSelectPolynomialBase)
+    test ("NFS smooth integer test excludes zero",nfsSmoothIntegerNonZero)
     test ("NFS Gaussian elimination is correct",nfsGaussianElimination)
 
 --------------------------------------------------------------------------------

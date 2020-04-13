@@ -97,6 +97,12 @@ isMonic f = not (isZero f) && powerCoeff f (degree f) == 1
 powerCoeff :: Zx -> Int -> Integer
 powerCoeff f i = IntMap.findWithDefault 0 i (coeffMap f)
 
+constantCoeff :: Zx -> Integer
+constantCoeff f = powerCoeff f 0
+
+linearCoeff :: Zx -> Integer
+linearCoeff f = powerCoeff f 1
+
 monomials :: Zx -> [(Int,Integer)]
 monomials = IntMap.toAscList . coeffMap
 

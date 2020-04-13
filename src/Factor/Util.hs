@@ -11,7 +11,9 @@ portability: portable
 module Factor.Util
 where
 
+import qualified Data.Bits as Bits
 import qualified Data.List as List
+import Data.Maybe (isJust)
 
 -------------------------------------------------------------------------------
 -- Integer divides relation
@@ -96,6 +98,46 @@ nthRootClosest n k =
     p = nthRoot n k
 
 -------------------------------------------------------------------------------
+-- Square integers
+-------------------------------------------------------------------------------
+
+destSquare :: Integer -> Maybe Integer
+destSquare n = if r * r == n then Just r else Nothing
+  where r = nthRoot 2 n
+
+isSquare :: Integer -> Bool
+isSquare = isJust . destSquare
+
+-------------------------------------------------------------------------------
+-- Integer bits
+-------------------------------------------------------------------------------
+
+-- Caution: returns an infinite list for negative arguments
+bitsInteger :: Integer -> [Bool]
+bitsInteger = map odd . takeWhile ((/=) 0) . iterate (flip Bits.shiftR 1)
+
+widthInteger :: Integer -> Int
+widthInteger n | n < 0 = error "bitwidth only defined for nonnegative integers"
+widthInteger n | otherwise = length $ bitsInteger n
+
+-------------------------------------------------------------------------------
+-- Integer log
+-------------------------------------------------------------------------------
+
+log2Integer :: Integer -> Double
+log2Integer n | n <= 0 = error "log only defined for positive integers"
+log2Integer n =
+    fromInteger (toInteger k) + logBase 2.0 (fromInteger (Bits.shiftR n k))
+  where
+    k = if w <= p then 0 else w - p
+    w = widthInteger n
+    p = 53
+
+logInteger :: Integer -> Double
+logInteger = \n -> log2Integer n / log2e
+  where log2e = logBase 2.0 (exp 1.0)
+
+-------------------------------------------------------------------------------
 -- The Jacobi symbol (m/n)
 --
 -- The n argument must be a positive odd integer
@@ -154,12 +196,12 @@ unfoldrN f = go []
 -- Abbreviated lists
 -------------------------------------------------------------------------------
 
-abbrevList :: [String] -> String
-abbrevList l = concat (map (\x -> "\n  " ++ x) m)
+abbrevList :: String -> [String] -> String
+abbrevList s l = concat (map (\x -> "\n  " ++ x) m)
   where
     i = 3
-    m = if n <= 2*i + 1 then l else take i l ++ o ++  drop (n - i) l
-    o = ["[... " ++ show (n - 2*i) ++ " omitted ...]"]
+    m = take i l ++ (if n <= 2*i + 1 then drop i l else o ++  drop (n - i) l)
+    o = ["[... " ++ show (n - 2*i) ++ " omitted " ++ s ++ " ...]"]
     n = length l
 
 -------------------------------------------------------------------------------
