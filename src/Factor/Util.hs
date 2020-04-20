@@ -45,11 +45,11 @@ divisionClosest m n =
     (q,r) = division m n
     abs_n = abs n
 
-multiple :: Integer -> Integer -> Maybe Integer
-multiple 0 = error "Integer multiple: division by 0"
-multiple 1 = Just
-multiple (-1) = Just . negate
-multiple m = \n -> if divides m n then Just (n `div` m) else Nothing
+exactQuotient :: Integer -> Integer -> Maybe Integer
+exactQuotient 0 = error "Integer exact quotient: division by 0"
+exactQuotient 1 = Just
+exactQuotient (-1) = Just . negate
+exactQuotient m = \n -> if divides m n then Just (n `div` m) else Nothing
 
 divPower :: Integer -> Integer -> (Int,Integer)
 divPower m | m <= 1 = error "divPower argument must be positive non-unit"

@@ -62,7 +62,7 @@ isLinear :: Gfpx -> Bool
 isLinear f = degree f <= 1
 
 isMonic :: Gfpx -> Bool
-isMonic f = not (isZero f) && powerCoeff f (degree f) == 1
+isMonic f = leadingCoeff f == 1
 
 powerCoeff :: Gfpx -> Int -> Gfp
 powerCoeff f i = IntMap.findWithDefault 0 i (coeffMap f)
@@ -72,6 +72,9 @@ constantCoeff f = powerCoeff f 0
 
 linearCoeff :: Gfpx -> Gfp
 linearCoeff f = powerCoeff f 1
+
+leadingCoeff :: Gfpx -> Gfp
+leadingCoeff f = powerCoeff f (degree f)
 
 monomials :: Gfpx -> [(Int,Gfp)]
 monomials = IntMap.toAscList . coeffMap
@@ -247,7 +250,7 @@ egcd p = go
     go f g | isZero g =
         if isZero f then (zero,(zero,zero)) else (h, (constant x, zero))
       where
-        x = Prime.invert p (powerCoeff f (degree f))
+        x = Prime.invert p (leadingCoeff f)
         h = multiplyConstant p x f
     go f g | otherwise =
         (h, (t, Factor.Gfpx.subtract p s (multiply p q t)))
@@ -381,3 +384,96 @@ liftRoot f p r = go p r
        where
           pk' = pk * p
           rk' = (rk - evaluate pk' (fromZx pk' f) rk * a) `mod` pk'
+
+-------------------------------------------------------------------------------
+-- The Frobenius endomorphism
+-------------------------------------------------------------------------------
+
+frobenius :: Prime -> Gfpx -> Gfpx
+frobenius _ f | isConstant f = f
+frobenius p (Gfpx {degree = d, coeffMap = m}) =
+    Gfpx {degree = d', coeffMap = m'}
+  where
+    d' = d * p'
+    m' = IntMap.mapKeysMonotonic ((*) p') m
+    p' = fromInteger p
+
+frobeniusRange :: Prime -> Gfpx -> Bool
+frobeniusRange p = all pDiv . IntMap.keys . coeffMap
+  where
+    p' = fromInteger p
+    pDiv i = i `mod` p' == 0
+
+-- Only defined for polynomials satisfying frobeniusRange
+frobeniusInverse :: Prime -> Gfpx -> Gfpx
+frobeniusInverse _ f | isConstant f = f
+frobeniusInverse p (Gfpx {degree = d, coeffMap = m}) =
+    Gfpx {degree = d', coeffMap = m'}
+  where
+    d' = d `div` p'
+    m' = IntMap.mapKeysMonotonic pDiv m
+    p' = fromInteger p
+    pDiv i = if i `mod` p' == 0 then i `div` p'
+             else error $ "power does not divide " ++ show p
+
+-------------------------------------------------------------------------------
+-- Square-free decomposition
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-------------------------------------------------------------------------------
+
+squareFree :: Prime -> Gfpx -> Bool
+squareFree p f =
+    if isZero f then error "GF(p)[x] square-free property not defined for zero"
+    else isLinear f || isConstant (Factor.Gfpx.gcd p f (derivative p f))
+
+squareFreeDecomposition :: Prime -> Gfpx -> [Gfpx]
+squareFreeDecomposition _ f | isZero f =
+    error "GF(p)[x] square-free decomposition not defined for zero"
+squareFreeDecomposition _ f | isLinear f =
+    [f]
+squareFreeDecomposition p f | not (isMonic f) =
+    case squareFreeDecomposition p f1 of
+      [] -> error "GF(p)[x] square-free decomposition returned an empty list"
+      a1 : al -> multiplyConstant p c a1 : al
+  where
+    c = leadingCoeff f
+    f1 = multiplyConstant p (Prime.invert p c) f
+squareFreeDecomposition p f0 =
+    output $ decompose f0
+  where
+    decompose f =
+        if isOne cp then m
+        else if isLinear cp then insert p' cp m
+        else IntMap.union m (frob (decompose cp))
+      where
+        c = Factor.Gfpx.gcd p f (derivative p f)
+        w = quotient p f c
+        (cp,m) = loop c w 1 IntMap.empty
+
+    loop c w _ m | isOne w = (frobeniusInverse p c, m)
+    loop c w k m = loop (quotient p c y) y (k + 1) (insert k a m)
+      where
+        y = Factor.Gfpx.gcd p w c
+        a = quotient p w y
+
+    p' = fromInteger p
+
+    frob = IntMap.mapKeysMonotonic ((*) p')
+
+    insert _ a m | isOne a = m
+    insert k a m = IntMap.insert k a m
+
+    output m = map (\k -> IntMap.findWithDefault one k m) [1..d]
+      where (d,_) = IntMap.findMax m
+
+squareFreeRecomposition :: Prime -> [Gfpx] -> Gfpx
+squareFreeRecomposition _ [] = error "GF(p)[x] square-free recomposition of empty list"
+squareFreeRecomposition p al = fst $ foldr mult (one,one) al
+  where mult a (f,g) = (multiply p g' f, g') where g' = multiply p a g
+
+-------------------------------------------------------------------------------
+-- Factorization using the Cantor–Zassenhaus algorithm
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-------------------------------------------------------------------------------

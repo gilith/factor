@@ -57,9 +57,10 @@ data Zx =
   deriving (Eq,Ord)
 
 instance Show Zx where
-  show f = case reverse (toMonomials f) of
-             [] -> "0"
-             m : ms -> concat (show m : map showMonomial ms)
+  show f = -- show (toCoeff f) -- for debugging
+      case reverse (toMonomials f) of
+        [] -> "0"
+        m : ms -> concat (show m : map showMonomial ms)
     where
       showMonomial m | coeffMonomial m < 0 = " - " ++ show (negateMonomial m)
       showMonomial m | otherwise = " + " ++ show m
@@ -85,6 +86,9 @@ fromNormCoeffMap c | otherwise = Zx {degree = d, coeffMap = c}
 isZero :: Zx -> Bool
 isZero f = degree f < 0
 
+isOne :: Zx -> Bool
+isOne f = f == one
+
 isConstant :: Zx -> Bool
 isConstant f = degree f <= 0
 
@@ -92,7 +96,7 @@ isLinear :: Zx -> Bool
 isLinear f = degree f <= 1
 
 isMonic :: Zx -> Bool
-isMonic f = not (isZero f) && powerCoeff f (degree f) == 1
+isMonic f = leadingCoeff f == 1
 
 powerCoeff :: Zx -> Int -> Integer
 powerCoeff f i = IntMap.findWithDefault 0 i (coeffMap f)
@@ -102,6 +106,9 @@ constantCoeff f = powerCoeff f 0
 
 linearCoeff :: Zx -> Integer
 linearCoeff f = powerCoeff f 1
+
+leadingCoeff :: Zx -> Integer
+leadingCoeff f = powerCoeff f (degree f)
 
 monomials :: Zx -> [(Int,Integer)]
 monomials = IntMap.toAscList . coeffMap
@@ -151,6 +158,9 @@ toMonomials = map mk . monomials
 
 fromCoeff :: [Integer] -> Zx
 fromCoeff = Factor.Zx.sum . zipWith monomial [0..]
+
+toCoeff :: Zx -> [Integer]
+toCoeff f = map (powerCoeff f) [0 .. degree f]
 
 -------------------------------------------------------------------------------
 -- Ring operations
@@ -203,6 +213,23 @@ multiplyPower i (Zx {degree = d, coeffMap = c}) =
     if d < 0 then zero
     else Zx {degree = d + i, coeffMap = IntMap.mapKeysMonotonic ((+) i) c}
 
+multiplyExp :: Zx -> Zx -> Integer -> Zx
+multiplyExp z _ _ | isZero z = zero
+multiplyExp z _ 0 = z
+multiplyExp _ f _ | isZero f = zero
+multiplyExp z f _ | isOne f = z
+multiplyExp z0 f0 k0 = go z0 f0 k0
+  where
+    go z _ 0 = z
+    go z f k = go z' f' k'
+      where
+        z' = if even k then z else multiply z f
+        f' = square f
+        k' = k `div` 2
+
+exp :: Zx -> Integer -> Zx
+exp = multiplyExp one
+
 -------------------------------------------------------------------------------
 -- Division
 -------------------------------------------------------------------------------
@@ -223,7 +250,7 @@ division f0 g = if gd < 0 then error "Zx.division by zero" else go zero f0
                    f' = Factor.Zx.subtract f (multiply m g)
                    m = monomial d n
     gd = degree g
-    gDiv = multiple (powerCoeff g gd)
+    gDiv = exactQuotient (powerCoeff g gd)
 
 quotient :: Zx -> Zx -> Zx
 quotient f g = fst $ Factor.Zx.division f g
@@ -234,24 +261,115 @@ remainder f g = snd $ Factor.Zx.division f g
 divides :: Zx -> Zx -> Bool
 divides f g = isZero g || (not (isZero f) && isZero (remainder g f))
 
+exactQuotientConstant :: Integer -> Zx -> Zx
+exactQuotientConstant 0 _ = error "Z[x] exact quotient by constant 0"
+exactQuotientConstant 1 f = f
+exactQuotientConstant n f =
+    f {coeffMap = IntMap.map (nDiv . exactQuotient n) (coeffMap f)}
+  where
+    nDiv Nothing = error "Z[x] exact quotient does not divide all coefficents"
+    nDiv (Just c) = c
+
 -------------------------------------------------------------------------------
--- Primitive part and content [1]
+-- Primitive part and content
 --
--- 1. https://en.wikipedia.org/wiki/Primitive_part_and_content
+-- https://en.wikipedia.org/wiki/Primitive_part_and_content
 -------------------------------------------------------------------------------
 
 content :: Zx -> Integer
 content f =
     case IntMap.minView (coeffMap f) of
       Nothing -> 1
-      Just (h,t) -> IntMap.foldl gcd (abs h) t
+      Just (h,t) -> IntMap.foldl Prelude.gcd (abs h) t
 
 isPrimitive :: Zx -> Bool
 isPrimitive = ((==) 1) . content
 
+contentPrimitive :: Zx -> (Integer,Zx)
+contentPrimitive f = (c, exactQuotientConstant c f)
+  where c = content f
+
 primitive :: Zx -> Zx
-primitive f =
-    if g == 1 then f else f {coeffMap = IntMap.map gDiv (coeffMap f)}
+primitive = snd . contentPrimitive
+
+-------------------------------------------------------------------------------
+-- Greatest common divisor using the subresultant pseudo-remainder sequence
+--
+-- https://en.wikipedia.org/wiki/Polynomial_greatest_common_divisor
+-------------------------------------------------------------------------------
+
+gcd :: Zx -> Zx -> Zx
+gcd f g = multiplyConstant hk hp
   where
-    g = content f
-    gDiv = flip div g
+    (fc,fp) = contentPrimitive f
+    (gc,gp) = contentPrimitive g
+    hc = Prelude.gcd fc gc
+    hp = gcdPrimitive fp gp
+    hk = if leadingCoeff hp < 0 then Prelude.negate hc else hc
+
+gcdPrimitive :: Zx -> Zx -> Zx
+gcdPrimitive f g | degree f < degree g = gcdPrimitive g f
+gcdPrimitive f g | isZero g = f
+gcdPrimitive f g = primitive $ go f g d1 g1 s1 b1
+  where
+    go rip ri di gi si bi =
+        if isZero r then ri else go ri ri1 di1 gi1 si1 bi1
+      where
+        r = remainder (multiplyConstant (gi ^ (di+1)) rip) ri
+        ri1 = exactQuotientConstant bi r
+        di1 = degree ri - degree ri1
+        gi1 = leadingCoeff ri1
+        (si1,_) = Factor.Util.division ((Prelude.negate gi) ^ di) (expm1 si di)
+        bi1 = Prelude.negate gi * (si1 ^ di1)
+
+    expm1 si 0 = if si == -1 then -1 else error "should have di>0 for all i>1"
+    expm1 si di = si ^ (di - 1)
+
+    d1 = degree f - degree g
+    g1 = leadingCoeff g
+    s1 = -1
+    b1 = if even d1 then (-1) else 1
+
+-------------------------------------------------------------------------------
+-- Square-free decomposition using Yun's algorithm
+--
+-- https://en.wikipedia.org/wiki/Square-free_polynomial#Yun's_algorithm
+-------------------------------------------------------------------------------
+
+squareFree :: Zx -> Bool
+squareFree f =
+    if isZero f then error "Z[x] square-free property not defined for zero"
+    else isLinear f || isConstant (Factor.Zx.gcd f (derivative f))
+
+squareFreeDecomposition :: Zx -> [Zx]
+squareFreeDecomposition f =
+    if isZero f then
+      error "Z[x] square-free decomposition not defined for zero"
+    else if isLinear f || isConstant a0 then
+      [f]
+    else
+      case go fp fp' a0 of
+        [] -> error "Z[x] square-free decomposition returned an empty list"
+        a1 : al -> multiplyConstant fk a1 : al
+  where
+    go bi di ai = if isConstant bi1 then [] else ai1 : go bi1 di1 ai1
+      where
+        bi1 = quotient bi ai
+        di1 = Factor.Zx.subtract (quotient di ai) (derivative bi1)
+        ai1 = Factor.Zx.gcd bi1 di1
+
+    (fc,fp) = contentPrimitive f
+    fk = if leadingCoeff f < 0 then Prelude.negate fc else fc
+    fp' = derivative fp
+    a0 = Factor.Zx.gcd fp fp'
+
+squareFreeRecomposition :: [Zx] -> Zx
+squareFreeRecomposition [] = error "Z[x] square-free recomposition of empty list"
+squareFreeRecomposition al = fst $ foldr mult (one,one) al
+  where mult a (f,g) = (multiply g' f, g') where g' = multiply a g
+
+-------------------------------------------------------------------------------
+-- Factorization using the Zassenhaus algorithm
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials
+-------------------------------------------------------------------------------

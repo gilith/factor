@@ -17,9 +17,9 @@ import qualified Data.Set as Set
 import Factor.Util
 
 -------------------------------------------------------------------------------
--- The genuine sieve of Eratosthenes [1]
+-- The genuine sieve of Eratosthenes
 --
--- 1. https://www.cs.hmc.edu/~oneill/papers/Sieve-JFP.pdf
+-- https://www.cs.hmc.edu/~oneill/papers/Sieve-JFP.pdf
 -------------------------------------------------------------------------------
 
 type Prime = Integer

@@ -231,6 +231,24 @@ testGaussian = do
 instance Arbitrary Zx where
   arbitrary = fmap Zx.fromCoeff arbitrary
 
+data ZxNonZero = ZxNonZero Zx
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary ZxNonZero where
+  arbitrary = do
+    cs <- arbitrary
+    NonZero c <- arbitrary
+    return $ ZxNonZero (Zx.fromCoeff (cs ++ [c]))
+
+data ZxNonConstant = ZxNonConstant Zx
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary ZxNonConstant where
+  arbitrary = do
+    NonEmpty cs <- arbitrary
+    NonZero c <- arbitrary
+    return $ ZxNonConstant (Zx.fromCoeff (cs ++ [c]))
+
 data ZxMonic = ZxMonic Zx
   deriving (Eq,Ord,Show)
 
@@ -244,9 +262,8 @@ data ZxMonicNotOne = ZxMonicNotOne Zx
 
 instance Arbitrary ZxMonicNotOne where
   arbitrary = do
-    c <- arbitrary
-    cs <- arbitrary
-    return $ ZxMonicNotOne (Zx.fromCoeff (c : cs ++ [1]))
+    NonEmpty cs <- arbitrary
+    return $ ZxMonicNotOne (Zx.fromCoeff (cs ++ [1]))
 
 data ZxPrimitive = ZxPrimitive Zx
   deriving (Eq,Ord,Show)
@@ -336,6 +353,29 @@ zxGaussLemma :: ZxPrimitive -> ZxPrimitive -> Bool
 zxGaussLemma (ZxPrimitive f) (ZxPrimitive g) =
     Zx.isPrimitive (Zx.multiply f g)
 
+zxGcd :: Zx -> Zx -> Bool
+zxGcd f g =
+    Zx.divides h f &&
+    Zx.divides h g &&
+    Zx.leadingCoeff h >= 0
+  where
+    h = Zx.gcd f g
+
+zxSquareFree :: ZxNonConstant -> ZxNonZero -> Bool
+zxSquareFree (ZxNonConstant f) (ZxNonZero g) =
+    not $ Zx.squareFree (Zx.multiply (Zx.square f) g)
+
+zxSquareFreeDecomposition :: NonEmptyList ZxNonZero -> Bool
+zxSquareFreeDecomposition (NonEmpty fs0) =
+    (toInteger (sum (zipWith (*) (map Zx.degree fs) [1..])) > maxDegree) ||
+    (not (null hs) &&
+     all Zx.squareFree hs &&
+     Zx.squareFreeRecomposition hs == g)
+  where
+    fs = map (\(ZxNonZero f) -> f) fs0
+    g = Zx.squareFreeRecomposition fs
+    hs = Zx.squareFreeDecomposition g
+
 testZx :: IO ()
 testZx = do
     test ("Z[x] constructor returns valid data structure",zxFromCoeffValid)
@@ -357,6 +397,9 @@ testZx = do
     test ("Z[x] quotient satisfies (f*g) / f == g",zxQuotientMultiply)
     test ("Z[x] decomposition into content and primitive part",zxContentPrimitive)
     test ("Z[x] product of primitive polynomials is primitive",zxGaussLemma)
+    test ("Z[x] gcd divides both arguments",zxGcd)
+    test ("Z[x] square-free test has no false positives",zxSquareFree)
+    test ("Z[x] square-free decomposition is correct",zxSquareFreeDecomposition)
 
 -------------------------------------------------------------------------------
 -- Testing primes
@@ -599,6 +642,51 @@ gfpxIrreducible (PrimeInteger p) (ZxMonicNotOne f0) (ZxMonicNotOne g0) =
     g = Gfpx.fromZx p g0
     h = Gfpx.multiply p f g
 
+gfpxFrobeniusValid :: PrimeInteger -> Zx -> Bool
+gfpxFrobeniusValid (PrimeInteger p) f0 =
+    Gfpx.valid p (Gfpx.frobenius p f)
+  where
+    f = Gfpx.fromZx p f0
+
+gfpxFrobeniusRange :: PrimeInteger -> Zx -> Bool
+gfpxFrobeniusRange (PrimeInteger p) f0 =
+    Gfpx.frobeniusRange p (Gfpx.frobenius p f)
+  where
+    f = Gfpx.fromZx p f0
+
+gfpxFrobeniusRangeDerivative :: PrimeInteger -> Zx -> Bool
+gfpxFrobeniusRangeDerivative (PrimeInteger p) f0 =
+    Gfpx.frobeniusRange p f == Gfpx.isZero (Gfpx.derivative p f)
+  where
+    f = Gfpx.fromZx p f0
+
+gfpxFrobeniusInverse :: PrimeInteger -> Zx -> Bool
+gfpxFrobeniusInverse (PrimeInteger p) f0 =
+    Gfpx.frobeniusInverse p (Gfpx.frobenius p f) == f
+  where
+    f = Gfpx.fromZx p f0
+
+gfpxSquareFree :: PrimeInteger -> Zx -> Zx -> Bool
+gfpxSquareFree (PrimeInteger p) f0 g0 =
+    Gfpx.isConstant f ||
+    Gfpx.isZero g ||
+    not (Gfpx.squareFree p (Gfpx.multiply p (Gfpx.square p f) g))
+  where
+    f = Gfpx.fromZx p f0
+    g = Gfpx.fromZx p g0
+
+gfpxSquareFreeDecomposition :: PrimeInteger -> [Zx] -> Bool
+gfpxSquareFreeDecomposition (PrimeInteger p) fs0 =
+    (toInteger (sum (zipWith (*) (map Gfpx.degree fs) [1..])) > maxDegree) ||
+    null fs ||
+    (not (null hs) &&
+     all (Gfpx.squareFree p) hs &&
+     Gfpx.squareFreeRecomposition p hs == g)
+  where
+    fs = filter (not . Gfpx.isZero) $ map (Gfpx.fromZx p) fs0
+    g = Gfpx.squareFreeRecomposition p fs
+    hs = Gfpx.squareFreeDecomposition p g
+
 testGfpx :: IO ()
 testGfpx = do
     test ("GF(p)[x] constructor returns valid data structure",gfpxFromZxValid)
@@ -622,6 +710,12 @@ testGfpx = do
     test ("GF(p)[x] modular exponentiation is correct",gfpxMultiplyExpRemainder)
     test ("GF(p)[x] root finding is correct",gfpxRoots)
     test ("GF(p)[x] irreducibility test is correct",gfpxIrreducible)
+    test ("GF(p)[x] Frobenius endomorphism returns valid data structure",gfpxFrobeniusValid)
+    test ("GF(p)[x] Frobenius endomorphism result is in range",gfpxFrobeniusRange)
+    test ("GF(p)[x] in Frobenius endomorphism range iff derivative is zero",gfpxFrobeniusRangeDerivative)
+    test ("GF(p)[x] Frobenius endomorphism inverse is correct",gfpxFrobeniusInverse)
+    test ("GF(p)[x] square-free test has no false positives",gfpxSquareFree)
+    test ("GF(p)[x] square-free decomposition is correct",gfpxSquareFreeDecomposition)
 
 -------------------------------------------------------------------------------
 -- Testing the subring Z[w] of the number field Q(w)
