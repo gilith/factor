@@ -310,9 +310,7 @@ expRemainder :: Prime -> Gfpx -> Gfpx -> Integer -> Gfpx
 expRemainder p f = multiplyExpRemainder p f one
 
 -------------------------------------------------------------------------------
--- Finding all roots of a polynomial f [1, sec 4.2]
---
--- 1. Matthew Briggs, An Introduction to the General Number Field Sieve
+-- Finding all roots of a polynomial [Briggs1998, sec 4.2]
 -------------------------------------------------------------------------------
 
 roots :: Prime -> Gfpx -> [Gfp]
@@ -473,7 +471,43 @@ squareFreeRecomposition p al = fst $ foldr mult (one,one) al
   where mult a (f,g) = (multiply p g' f, g') where g' = multiply p a g
 
 -------------------------------------------------------------------------------
--- Factorization using the Cantor–Zassenhaus algorithm
+-- Distinct degree factorization
+--
+-- Input:  Polynomial f assumed to be monic and square-free
+-- Output: List of (g,d) where g is product of all irreducible degree d
+--         factors of f
 --
 -- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
 -------------------------------------------------------------------------------
+
+factorDistinctDegree :: Prime -> Gfpx -> [(Gfpx,Int)]
+factorDistinctDegree _ f | isZero f =
+    error "GF(p)[x] distinct degree factorization not defined for zero"
+factorDistinctDegree _ f | not (isMonic f) =
+    error "GF(p)[x] distinct degree factorization requires monic input"
+factorDistinctDegree p f0 =
+    go 1 f0 variable
+  where
+    -- Invariant: degree f >= 2*d ==> x == remainder p (x^(p^(d-1))) f
+    go d f _ | degree f < 2*d = if isOne f then [] else [(f, degree f)]
+    go d f x | otherwise = if isOne g then go d' f x' else (g,d) : go d' f' x''
+      where
+        x' = expRemainder p f x p
+        g = Factor.Gfpx.gcd p f (Factor.Gfpx.subtract p x' variable)
+        d' = d + 1
+        f' = quotient p f g
+        x'' = remainder p x' f'
+
+-------------------------------------------------------------------------------
+-- Factorization using the Cantor–Zassenhaus probabilistic algorithm
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-------------------------------------------------------------------------------
+
+factorEqualDegree :: Prime -> Gfpx -> Int -> [Gfpx]
+factorEqualDegree _ f d | degree f == d =
+    [f]
+factorEqualDegree p _ _ | p == 2 =
+    error "GF(2)[x] equal degree factorization not supported"
+factorEqualDegree p f d =
+    undefined
