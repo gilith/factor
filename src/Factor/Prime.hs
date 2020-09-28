@@ -13,6 +13,8 @@ where
 
 import qualified Data.List as List
 import qualified Data.Set as Set
+import System.Random (RandomGen)
+import qualified System.Random as Random
 
 import Factor.Util
 
@@ -150,6 +152,9 @@ invert p x =
 
 divide :: Prime -> Gfp -> Gfp -> Gfp
 divide p x y = multiply p x (invert p y)
+
+uniform :: RandomGen r => Prime -> r -> (Gfp,r)
+uniform p = Random.randomR (0, p - 1)
 
 -------------------------------------------------------------------------------
 -- Square roots in GF(p) using the Tonelli-Shanks algorithm

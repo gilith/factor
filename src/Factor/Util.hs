@@ -189,7 +189,7 @@ tripleton x y z = [x,y,z]
 unfoldrN :: (b -> (a,b)) -> Int -> b -> ([a],b)
 unfoldrN f = go []
   where
-    go xs 0 s = (reverse xs, s)
+    go xs 0 s = (xs,s)
     go xs n s = go (x : xs) (n - 1) s' where (x,s') = f s
 
 -------------------------------------------------------------------------------
@@ -239,7 +239,7 @@ fmtTable fmt table = concatMap ppRow rows
 
     ppRow :: (Int,[(Int,[String])]) -> String
     ppRow (_,[]) = (if border then hBorder else "") ++ "\n"
-    ppRow (h,ents) = concat ls
+    ppRow (h,ents) = concat (reverse ls)
       where
         row = ents ++ replicate (cols - length ents) (0,[])
         (ls,_) = unfoldrN peelRow h (zip colWidths row)

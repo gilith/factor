@@ -11,6 +11,7 @@ module Main
   ( main )
 where
 
+import qualified System.Random as Random
 import Test.QuickCheck
 
 import Factor.Gaussian (Gaussian(..))
@@ -231,7 +232,7 @@ testGaussian = do
 instance Arbitrary Zx where
   arbitrary = fmap Zx.fromCoeff arbitrary
 
-data ZxNonZero = ZxNonZero Zx
+data ZxNonZero = ZxNonZero {unZxNonZero :: Zx}
   deriving (Eq,Ord,Show)
 
 instance Arbitrary ZxNonZero where
@@ -249,7 +250,7 @@ instance Arbitrary ZxNonConstant where
     NonZero c <- arbitrary
     return $ ZxNonConstant (Zx.fromCoeff (cs ++ [c]))
 
-data ZxMonic = ZxMonic Zx
+data ZxMonic = ZxMonic {unZxMonic :: Zx}
   deriving (Eq,Ord,Show)
 
 instance Arbitrary ZxMonic where
@@ -372,7 +373,7 @@ zxSquareFreeDecomposition (NonEmpty fs0) =
      all Zx.squareFree hs &&
      Zx.squareFreeRecomposition hs == g)
   where
-    fs = map (\(ZxNonZero f) -> f) fs0
+    fs = map unZxNonZero fs0
     g = Zx.squareFreeRecomposition fs
     hs = Zx.squareFreeDecomposition g
 
@@ -398,7 +399,7 @@ testZx = do
     test ("Z[x] decomposition into content and primitive part",zxContentPrimitive)
     test ("Z[x] product of primitive polynomials is primitive",zxGaussLemma)
     test ("Z[x] gcd divides both arguments",zxGcd)
-    test ("Z[x] square-free test has no false positives",zxSquareFree)
+    testN 100 ("Z[x] square-free test has no false positives",zxSquareFree)
     test ("Z[x] square-free decomposition is correct",zxSquareFreeDecomposition)
 
 -------------------------------------------------------------------------------
@@ -412,6 +413,14 @@ instance Arbitrary PrimeInteger where
   arbitrary = do
     NonNegative i <- arbitrary
     return $ PrimeInteger (Prime.list !! i)
+
+data OddPrimeInteger = OddPrimeInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary OddPrimeInteger where
+  arbitrary = do
+    Positive i <- arbitrary
+    return $ OddPrimeInteger (Prime.list !! i)
 
 primeMonotonic :: NonNegative Int -> Bool
 primeMonotonic (NonNegative i) =
@@ -687,6 +696,20 @@ gfpxSquareFreeDecomposition (PrimeInteger p) fs0 =
     g = Gfpx.squareFreeRecomposition p fs
     hs = Gfpx.squareFreeDecomposition p g
 
+gfpxFactorMonic :: OddPrimeInteger -> [ZxMonic] -> Int -> Bool
+gfpxFactorMonic (OddPrimeInteger p) fs0 r0 =
+    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 5) ||
+    (all ((\k -> 0 < k) . snd) gks &&
+     all (not . Gfpx.isConstant . fst) gks &&
+     all (Gfpx.isMonic . fst) gks &&
+     all (Gfpx.irreducible p . fst) gks &&
+     Gfpx.product p (map (uncurry (Gfpx.exp p)) gks) == f)
+  where
+    fs = map (Gfpx.fromZx p . unZxMonic) fs0
+    f = Gfpx.product p fs
+    r = Random.mkStdGen r0
+    (gks,_) = Gfpx.factorMonic p f r
+
 testGfpx :: IO ()
 testGfpx = do
     test ("GF(p)[x] constructor returns valid data structure",gfpxFromZxValid)
@@ -716,6 +739,7 @@ testGfpx = do
     test ("GF(p)[x] Frobenius endomorphism inverse is correct",gfpxFrobeniusInverse)
     test ("GF(p)[x] square-free test has no false positives",gfpxSquareFree)
     test ("GF(p)[x] square-free decomposition is correct",gfpxSquareFreeDecomposition)
+    testN 100 ("GF(p)[x] monic factorization is correct",gfpxFactorMonic)
 
 -------------------------------------------------------------------------------
 -- Testing the subring Z[w] of the number field Q(w)

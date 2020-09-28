@@ -13,9 +13,11 @@ where
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as List
+import System.Random (RandomGen)
 
 import Factor.Prime (Gfp,Prime)
 import qualified Factor.Prime as Prime
+import qualified Factor.Util as Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 
@@ -63,6 +65,13 @@ isLinear f = degree f <= 1
 
 isMonic :: Gfpx -> Bool
 isMonic f = leadingCoeff f == 1
+
+constMonic :: Prime -> Gfpx -> (Gfp,Gfpx)
+constMonic p f =
+    case leadingCoeff f of
+      0 -> error "constMonic: zero polynomial"
+      1 -> (1,f)
+      c -> (c, multiplyConstant p (Prime.invert p c) f)
 
 powerCoeff :: Gfpx -> Int -> Gfp
 powerCoeff f i = IntMap.findWithDefault 0 i (coeffMap f)
@@ -132,6 +141,11 @@ toZx (Gfpx {degree = d, coeffMap = c}) = Zx.Zx {Zx.degree = d, Zx.coeffMap = c}
 toSmallestZx :: Prime -> Gfpx -> Zx
 toSmallestZx p (Gfpx {degree = d, coeffMap = c}) =
     Zx.Zx {Zx.degree = d, Zx.coeffMap = IntMap.map (Prime.toSmallestInteger p) c}
+
+uniform :: RandomGen r => Prime -> Int -> r -> (Gfpx,r)
+uniform _ d r | d < 0 = (zero,r)
+uniform p d r = (fromCoeff l, r')
+  where (l,r') = Util.unfoldrN (Prime.uniform p) (d + 1) r
 
 -------------------------------------------------------------------------------
 -- Ring operations
@@ -431,12 +445,11 @@ squareFreeDecomposition _ f | isZero f =
 squareFreeDecomposition _ f | isLinear f =
     [f]
 squareFreeDecomposition p f | not (isMonic f) =
-    case squareFreeDecomposition p f1 of
+    case squareFreeDecomposition p g of
       [] -> error "GF(p)[x] square-free decomposition returned an empty list"
       a1 : al -> multiplyConstant p c a1 : al
   where
-    c = leadingCoeff f
-    f1 = multiplyConstant p (Prime.invert p c) f
+    (c,g) = constMonic p f
 squareFreeDecomposition p f0 =
     output $ decompose f0
   where
@@ -474,7 +487,7 @@ squareFreeRecomposition p al = fst $ foldr mult (one,one) al
 -- Distinct degree factorization
 --
 -- Input:  Polynomial f assumed to be monic and square-free
--- Output: List of (g,d) where g is product of all irreducible degree d
+-- Output: List of (g,d) where g is product of all monic irreducible degree d
 --         factors of f
 --
 -- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
@@ -499,15 +512,59 @@ factorDistinctDegree p f0 =
         x'' = remainder p x' f'
 
 -------------------------------------------------------------------------------
--- Factorization using the Cantor–Zassenhaus probabilistic algorithm
+-- Equal-degree factorization using the Cantor–Zassenhaus probabilistic algorithm
+--
+-- Input: Polynomial f assumed to be product of distinct monic irreducible
+--        degree d polynomials
+-- Output: List of degree d factors of f
 --
 -- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
 -------------------------------------------------------------------------------
 
-factorEqualDegree :: Prime -> Gfpx -> Int -> [Gfpx]
-factorEqualDegree _ f d | degree f == d =
-    [f]
-factorEqualDegree p _ _ | p == 2 =
+factorEqualDegree :: RandomGen r => Prime -> Gfpx -> Int -> r -> ([Gfpx],r)
+factorEqualDegree _ f d r | degree f == d =
+    ([f],r)
+factorEqualDegree p _ _ _ | p == 2 =
     error "GF(2)[x] equal degree factorization not supported"
-factorEqualDegree p f d =
-    undefined
+factorEqualDegree p f d r0 = go [] [f] r0
+  where
+    go dl [] r = (dl,r)
+    go dl hl r = go (dl' ++ dl) hl' r'
+      where
+        (u,r') = uniform p n r
+        v = Factor.Gfpx.subtract p (expRemainder p f u pd) one
+        (dl',hl') = List.partition degreeD $ concatMap (split v) hl
+
+    split v h =
+        if isOne g || degree g == degree h then [h] else [g, quotient p h g]
+      where
+        g = Factor.Gfpx.gcd p v h
+
+    degreeD h = degree h == d
+
+    n = degree f
+    pd = p ^ d
+
+-------------------------------------------------------------------------------
+-- Factorization of monic polynomials
+--
+-- Input:  Monic polynomial f
+-- Output: List of irreducible polynomials g_i and positive integers k_i
+--         such that f = product_i g_i^k_i
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-------------------------------------------------------------------------------
+
+factorSquareFree :: RandomGen r => Prime -> Gfpx -> r -> ([Gfpx],r)
+factorSquareFree _ f r | isLinear f = ([f],r)
+factorSquareFree p f r0 = foldr fed ([],r0) (factorDistinctDegree p f)
+  where
+    fed (h,d) (gl,r) = (gl' ++ gl, r')
+      where (gl',r') = factorEqualDegree p h d r
+
+factorMonic :: RandomGen r => Prime -> Gfpx -> r -> ([(Gfpx,Integer)],r)
+factorMonic p f r0 = foldr fsf ([],r0) (zip (squareFreeDecomposition p f) [1..])
+  where
+    fsf (h,_) gkl_r | isOne h = gkl_r
+    fsf (h,k) (gkl,r) = (map (\g -> (g,k)) gl ++ gkl, r')
+      where (gl,r') = factorSquareFree p h r
