@@ -21,6 +21,7 @@ Library
   hs-source-dirs: src
   ghc-options: -Wall
   exposed-modules:
+    Factor.Bz,
     Factor.Gaussian,
     Factor.Gfpx,
     Factor.Nfs,

@@ -14,6 +14,7 @@ where
 import qualified System.Random as Random
 import Test.QuickCheck
 
+import qualified Factor.Bz as Bz
 import Factor.Gaussian (Gaussian(..))
 import qualified Factor.Gaussian as Gaussian
 import qualified Factor.Gfpx as Gfpx
@@ -27,16 +28,16 @@ import Factor.Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Constants
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 maxDegree :: Integer
 maxDegree = 100
 
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Helper functions
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 checkWith :: Testable prop => Args -> (String,prop) -> IO ()
 checkWith args (desc,prop) = do
@@ -226,6 +227,98 @@ testGaussian = do
     test ("Gaussian integer extended gcd is correct",gaussianEgcd)
 
 -------------------------------------------------------------------------------
+-- Testing primes
+-------------------------------------------------------------------------------
+
+data PrimeInteger = PrimeInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary PrimeInteger where
+  arbitrary = do
+    NonNegative i <- arbitrary
+    return $ PrimeInteger (Prime.list !! i)
+
+data OddPrimeInteger = OddPrimeInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary OddPrimeInteger where
+  arbitrary = do
+    Positive i <- arbitrary
+    return $ OddPrimeInteger (Prime.list !! i)
+
+data PrimePowerInteger = PrimePowerInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary PrimePowerInteger where
+  arbitrary = do
+    PrimeInteger p <- arbitrary
+    Positive k <- arbitrary :: Gen (Positive Integer)
+    return $ PrimePowerInteger (p ^ k)
+
+primeMonotonic :: NonNegative Int -> Bool
+primeMonotonic (NonNegative i) =
+    if i == 0 then p == 2 else (Prime.list !! (i-1)) < p
+  where
+    p = Prime.list !! i
+
+primeIndivisible :: NonNegative Int -> Bool
+primeIndivisible (NonNegative i) =
+    all (\q -> not (divides q p)) (take i Prime.list)
+  where
+    p = Prime.list !! i
+
+primeFactor :: [NonNegative Int] -> Integer -> Bool
+primeFactor il n =
+    m == n
+  where
+    m = foldr (\(p,k) z -> p^k * z) s pks
+    (pks,s) = Prime.factor ps n
+    (ps,_) = foldr nextP ([],Prime.list) il
+    nextP (NonNegative i) (x,y) = let z = drop i y in (head z : x, tail z)
+
+primeTrialDivision :: Integer -> Bool
+primeTrialDivision n =
+    m == n &&
+    (case compare n 0 of
+       LT -> s == -1
+       EQ -> null pks && s == 0
+       GT -> s == 1)
+  where
+    m = foldr (\(p,k) z -> p^k * z) s pks
+    (pks,s) = Prime.trialDivision n
+
+primeFermat :: PrimeInteger -> Integer -> Bool
+primeFermat (PrimeInteger p) n =
+    Prime.exp p x p == x
+  where
+    x = Prime.fromInteger p n
+
+primeInvert :: PrimePowerInteger -> Integer -> Bool
+primeInvert (PrimePowerInteger p) n =
+    not (coprime p x) ||
+    (Prime.valid p y &&
+     Prime.multiply p x y == 1)
+  where
+    x = Prime.fromInteger p n
+    y = Prime.invert p x
+
+primeSqrt :: PrimeInteger -> Integer -> Bool
+primeSqrt (PrimeInteger p) n =
+    (Prime.square p (Prime.sqrt p x) /= x) == Prime.nonResidue p n
+  where
+    x = Prime.fromInteger p n
+
+testPrime :: IO ()
+testPrime = do
+    test ("Prime integers form a monotonic list starting at 2",primeMonotonic)
+    test ("Prime integers are mutually indivisible",primeIndivisible)
+    test ("Prime factorization of integers is correct",primeFactor)
+    test ("Prime trial division factors all integers",primeTrialDivision)
+    test ("Prime exponentiation satisfies Fermat's little theorem",primeFermat)
+    test ("Prime inverse is correct",primeInvert)
+    test ("Prime square root is correct",primeSqrt)
+
+-------------------------------------------------------------------------------
 -- Testing the polynomial ring Z[x]
 -------------------------------------------------------------------------------
 
@@ -321,6 +414,19 @@ zxMultiplyConstantValid n f = Zx.valid (Zx.multiplyConstant n f)
 zxMultiplyPowerValid :: NonNegative Int -> Zx -> Bool
 zxMultiplyPowerValid (NonNegative d) f = Zx.valid (Zx.multiplyPower d f)
 
+zxMultiplyTrailingCoeff :: ZxNonZero -> ZxNonZero -> Bool
+zxMultiplyTrailingCoeff (ZxNonZero f) (ZxNonZero g) =
+    ft <= ht && divides fn hn
+  where
+    h = Zx.multiply f g
+    (ft,fn) = Zx.trailingCoeff f
+    (ht,hn) = Zx.trailingCoeff h
+
+zxComposeEvaluate :: Zx -> Zx -> Integer -> Bool
+zxComposeEvaluate f g x =
+    (toInteger (Zx.degree f * Zx.degree g) > maxDegree) ||
+    (Zx.evaluate (Zx.compose f g) x == Zx.evaluate f (Zx.evaluate g x))
+
 zxDivision :: Zx -> Zx -> Bool
 zxDivision f g =
     Zx.isZero g ||
@@ -335,6 +441,9 @@ zxDivisionMonic f (ZxMonic m) =
     (Zx.degree r < Zx.degree m)
   where
     (q,r) = Zx.division f m
+
+zxDivides :: Zx -> Zx -> Bool
+zxDivides f g = Zx.divides f (Zx.multiply f g)
 
 zxQuotientMultiply :: Zx -> Zx -> Bool
 zxQuotientMultiply f g =
@@ -377,6 +486,13 @@ zxSquareFreeDecomposition (NonEmpty fs0) =
     g = Zx.squareFreeRecomposition fs
     hs = Zx.squareFreeDecomposition g
 
+zxComposePlusMinusSqrt :: Zx -> NonNegative Integer -> Bool
+zxComposePlusMinusSqrt f (NonNegative a) =
+    Zx.composePlusMinusSqrt f (a * a) ==
+    Zx.multiply
+      (Zx.compose f (Zx.add Zx.variable (Zx.constant a)))
+      (Zx.compose f (Zx.subtract Zx.variable (Zx.constant a)))
+
 testZx :: IO ()
 testZx = do
     test ("Z[x] constructor returns valid data structure",zxFromCoeffValid)
@@ -393,153 +509,74 @@ testZx = do
     test ("Z[x] multiplication evaluation",zxMultiplyEvaluate)
     test ("Z[x] multiplication by a constant returns valid data structure",zxMultiplyConstantValid)
     test ("Z[x] multiplication by a power returns valid data structure",zxMultiplyPowerValid)
+    test ("Z[x] multiplication trailing coefficient",zxMultiplyTrailingCoeff)
+    test ("Z[x] composition evaluation",zxComposeEvaluate)
     test ("Z[x] division satisfies f == q*g + r",zxDivision)
     test ("Z[x] division by a monic polynomial",zxDivisionMonic)
+    test ("Z[x] division test",zxDivides)
     test ("Z[x] quotient satisfies (f*g) / f == g",zxQuotientMultiply)
     test ("Z[x] decomposition into content and primitive part",zxContentPrimitive)
     test ("Z[x] product of primitive polynomials is primitive",zxGaussLemma)
     test ("Z[x] gcd divides both arguments",zxGcd)
     testN 100 ("Z[x] square-free test has no false positives",zxSquareFree)
     test ("Z[x] square-free decomposition is correct",zxSquareFreeDecomposition)
-
--------------------------------------------------------------------------------
--- Testing primes
--------------------------------------------------------------------------------
-
-data PrimeInteger = PrimeInteger Integer
-  deriving (Eq,Ord,Show)
-
-instance Arbitrary PrimeInteger where
-  arbitrary = do
-    NonNegative i <- arbitrary
-    return $ PrimeInteger (Prime.list !! i)
-
-data OddPrimeInteger = OddPrimeInteger Integer
-  deriving (Eq,Ord,Show)
-
-instance Arbitrary OddPrimeInteger where
-  arbitrary = do
-    Positive i <- arbitrary
-    return $ OddPrimeInteger (Prime.list !! i)
-
-primeMonotonic :: NonNegative Int -> Bool
-primeMonotonic (NonNegative i) =
-    if i == 0 then p == 2 else (Prime.list !! (i-1)) < p
-  where
-    p = Prime.list !! i
-
-primeIndivisible :: NonNegative Int -> Bool
-primeIndivisible (NonNegative i) =
-    all (\q -> not (divides q p)) (take i Prime.list)
-  where
-    p = Prime.list !! i
-
-primeFactor :: [NonNegative Int] -> Integer -> Bool
-primeFactor il n =
-    m == n
-  where
-    m = foldr (\(p,k) z -> p^k * z) s pks
-    (pks,s) = Prime.factor ps n
-    (ps,_) = foldr nextP ([],Prime.list) il
-    nextP (NonNegative i) (x,y) = let z = drop i y in (head z : x, tail z)
-
-primeTrialDivision :: Integer -> Bool
-primeTrialDivision n =
-    m == n &&
-    (case compare n 0 of
-       LT -> s == -1
-       EQ -> null pks && s == 0
-       GT -> s == 1)
-  where
-    m = foldr (\(p,k) z -> p^k * z) s pks
-    (pks,s) = Prime.trialDivision n
-
-primeFermat :: PrimeInteger -> Integer -> Bool
-primeFermat (PrimeInteger p) n =
-    Prime.exp p x p == x
-  where
-    x = Prime.fromInteger p n
-
-primeInvert :: PrimeInteger -> Integer -> Bool
-primeInvert (PrimeInteger p) n =
-    x == 0 ||
-    (Prime.valid p y &&
-     Prime.multiply p x y == 1)
-  where
-    x = Prime.fromInteger p n
-    y = Prime.invert p x
-
-primeSqrt :: PrimeInteger -> Integer -> Bool
-primeSqrt (PrimeInteger p) n =
-    (Prime.square p (Prime.sqrt p x) /= x) == Prime.nonResidue p n
-  where
-    x = Prime.fromInteger p n
-
-testPrime :: IO ()
-testPrime = do
-    test ("Prime integers form a monotonic list starting at 2",primeMonotonic)
-    test ("Prime integers are mutually indivisible",primeIndivisible)
-    test ("Prime factorization of integers is correct",primeFactor)
-    test ("Prime trial division factors all integers",primeTrialDivision)
-    test ("Prime exponentiation satisfies Fermat's little theorem",primeFermat)
-    test ("Prime inverse is correct",primeInvert)
-    test ("Prime square root is correct",primeSqrt)
+    test ("Z[x] compose with +/- sqrt is correct",zxComposePlusMinusSqrt)
 
 -------------------------------------------------------------------------------
 -- Testing the polynomial ring GF(p)[x]
 -------------------------------------------------------------------------------
 
-gfpxFromZxValid :: PrimeInteger -> Zx -> Bool
-gfpxFromZxValid (PrimeInteger p) = Gfpx.valid p . Gfpx.fromZx p
+gfpxFromZxValid :: PrimePowerInteger -> Zx -> Bool
+gfpxFromZxValid (PrimePowerInteger p) = Gfpx.valid p . Gfpx.fromZx p
 
-gfpxConstantEvaluate :: PrimeInteger -> Integer -> Integer -> Bool
-gfpxConstantEvaluate (PrimeInteger p) c0 x0 =
+gfpxConstantEvaluate :: PrimePowerInteger -> Integer -> Integer -> Bool
+gfpxConstantEvaluate (PrimePowerInteger p) c0 x0 =
     Gfpx.evaluate p (Gfpx.constant c) x == c
   where
     c = Prime.fromInteger p c0
     x = Prime.fromInteger p x0
 
-gfpxDerivativeValid :: PrimeInteger -> Zx -> Bool
-gfpxDerivativeValid (PrimeInteger p) f0 =
+gfpxDerivativeValid :: PrimePowerInteger -> Zx -> Bool
+gfpxDerivativeValid (PrimePowerInteger p) f0 =
     Gfpx.valid p (Gfpx.derivative p f)
   where
     f = Gfpx.fromZx p f0
 
-gfpxNegateValid :: PrimeInteger -> Zx -> Bool
-gfpxNegateValid (PrimeInteger p) f0 =
+gfpxNegateValid :: PrimePowerInteger -> Zx -> Bool
+gfpxNegateValid (PrimePowerInteger p) f0 =
     Gfpx.valid p (Gfpx.negate p f)
   where
     f = Gfpx.fromZx p f0
 
-gfpxNegateDegree :: PrimeInteger -> Zx -> Bool
-gfpxNegateDegree (PrimeInteger p) f0 =
+gfpxNegateDegree :: PrimePowerInteger -> Zx -> Bool
+gfpxNegateDegree (PrimePowerInteger p) f0 =
     Gfpx.degree (Gfpx.negate p f) == Gfpx.degree f
   where
     f = Gfpx.fromZx p f0
 
-gfpxNegateEvaluate :: PrimeInteger -> Zx -> Integer -> Bool
-gfpxNegateEvaluate (PrimeInteger p) f0 x0 =
+gfpxNegateEvaluate :: PrimePowerInteger -> Zx -> Integer -> Bool
+gfpxNegateEvaluate (PrimePowerInteger p) f0 x0 =
     Gfpx.evaluate p (Gfpx.negate p f) x == Prime.negate p (Gfpx.evaluate p f x)
   where
     f = Gfpx.fromZx p f0
     x = Prime.fromInteger p x0
 
-gfpxAddValid :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxAddValid (PrimeInteger p) f0 g0 =
+gfpxAddValid :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxAddValid (PrimePowerInteger p) f0 g0 =
     Gfpx.valid p (Gfpx.add p f g)
   where
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
-gfpxAddDegree :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxAddDegree (PrimeInteger p) f0 g0 =
+gfpxAddDegree :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxAddDegree (PrimePowerInteger p) f0 g0 =
     Gfpx.degree (Gfpx.add p f g) <= max (Gfpx.degree f) (Gfpx.degree g)
   where
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
-gfpxAddEvaluate :: PrimeInteger -> Zx -> Zx -> Integer -> Bool
-gfpxAddEvaluate (PrimeInteger p) f0 g0 x0 =
+gfpxAddEvaluate :: PrimePowerInteger -> Zx -> Zx -> Integer -> Bool
+gfpxAddEvaluate (PrimePowerInteger p) f0 g0 x0 =
     Gfpx.evaluate p (Gfpx.add p f g) x ==
     Prime.add p (Gfpx.evaluate p f x) (Gfpx.evaluate p g x)
   where
@@ -547,25 +584,28 @@ gfpxAddEvaluate (PrimeInteger p) f0 g0 x0 =
     g = Gfpx.fromZx p g0
     x = Prime.fromInteger p x0
 
-gfpxMultiplyValid :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxMultiplyValid (PrimeInteger p) f0 g0 =
+gfpxMultiplyValid :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxMultiplyValid (PrimePowerInteger p) f0 g0 =
     Gfpx.valid p (Gfpx.multiply p f g)
   where
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
-gfpxMultiplyDegree :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxMultiplyDegree (PrimeInteger p) f0 g0 =
-    if fd < 0 || gd < 0 then d < 0 else d == fd + gd
+gfpxMultiplyDegree :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxMultiplyDegree (PrimePowerInteger p) f0 g0 =
+    if fd < 0 || gd < 0 then d < 0
+    else if lcz then d < fd + gd
+    else d == fd + gd
   where
+    lcz = Prime.multiply p (Gfpx.leadingCoeff f) (Gfpx.leadingCoeff g) == 0
     d = Gfpx.degree (Gfpx.multiply p f g)
     fd = Gfpx.degree f
     gd = Gfpx.degree g
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
-gfpxMultiplyEvaluate :: PrimeInteger -> Zx -> Zx -> Integer -> Bool
-gfpxMultiplyEvaluate (PrimeInteger p) f0 g0 x0 =
+gfpxMultiplyEvaluate :: PrimePowerInteger -> Zx -> Zx -> Integer -> Bool
+gfpxMultiplyEvaluate (PrimePowerInteger p) f0 g0 x0 =
     Gfpx.evaluate p (Gfpx.multiply p f g) x ==
     Prime.multiply p (Gfpx.evaluate p f x) (Gfpx.evaluate p g x)
   where
@@ -573,22 +613,32 @@ gfpxMultiplyEvaluate (PrimeInteger p) f0 g0 x0 =
     g = Gfpx.fromZx p g0
     x = Prime.fromInteger p x0
 
-gfpxMultiplyConstantValid :: PrimeInteger -> Integer -> Zx -> Bool
-gfpxMultiplyConstantValid (PrimeInteger p) x0 f0 =
+gfpxMultiplyConstantValid :: PrimePowerInteger -> Integer -> Zx -> Bool
+gfpxMultiplyConstantValid (PrimePowerInteger p) x0 f0 =
     Gfpx.valid p (Gfpx.multiplyConstant p x f)
   where
     x = Prime.fromInteger p x0
     f = Gfpx.fromZx p f0
 
-gfpxMultiplyPowerValid :: PrimeInteger -> NonNegative Int -> Zx -> Bool
-gfpxMultiplyPowerValid (PrimeInteger p) (NonNegative d) f0 =
+gfpxMultiplyPowerValid :: PrimePowerInteger -> NonNegative Int -> Zx -> Bool
+gfpxMultiplyPowerValid (PrimePowerInteger p) (NonNegative d) f0 =
     Gfpx.valid p (Gfpx.multiplyPower d f)
   where
     f = Gfpx.fromZx p f0
 
-gfpxDivision :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxDivision (PrimeInteger p) f0 g0 =
-    Gfpx.isZero g ||
+gfpxComposeEvaluate :: PrimePowerInteger -> Zx -> Zx -> Integer -> Bool
+gfpxComposeEvaluate (PrimePowerInteger p) f0 g0 x0 =
+    (toInteger (Gfpx.degree f * Gfpx.degree g) > maxDegree) ||
+    (Gfpx.evaluate p (Gfpx.compose p f g) x ==
+     Gfpx.evaluate p f (Gfpx.evaluate p g x))
+  where
+    f = Gfpx.fromZx p f0
+    g = Gfpx.fromZx p g0
+    x = Prime.fromInteger p x0
+
+gfpxDivision :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxDivision (PrimePowerInteger p) f0 g0 =
+    not (coprime p (Gfpx.leadingCoeff g)) ||
     ((f == Gfpx.add p (Gfpx.multiply p q g) r) &&
      (Gfpx.degree r < Gfpx.degree g))
   where
@@ -596,13 +646,24 @@ gfpxDivision (PrimeInteger p) f0 g0 =
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
-gfpxQuotientMultiply :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxQuotientMultiply (PrimeInteger p) f0 g0 =
-    Gfpx.isZero f ||
+gfpxQuotientMultiply :: PrimePowerInteger -> Zx -> Zx -> Bool
+gfpxQuotientMultiply (PrimePowerInteger p) f0 g0 =
+    not (coprime p (Gfpx.leadingCoeff f)) ||
     (Gfpx.quotient p (Gfpx.multiply p f g) f == g)
   where
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
+
+gfpxMultiplyExpRemainder :: PrimePowerInteger -> Zx -> Zx -> Zx -> (NonNegative Integer) -> Bool
+gfpxMultiplyExpRemainder (PrimePowerInteger p) f0 g0 h0 (NonNegative k) =
+    (toInteger (Gfpx.degree f) + toInteger (Gfpx.degree g) * k > maxDegree) ||
+    (not (coprime p (Gfpx.leadingCoeff f))) ||
+    (Gfpx.multiplyExpRemainder p f g h k ==
+     Gfpx.remainder p (Gfpx.multiplyExp p g h k) f)
+  where
+    f = Gfpx.fromZx p f0
+    g = Gfpx.fromZx p g0
+    h = Gfpx.fromZx p h0
 
 gfpxEgcd :: PrimeInteger -> Zx -> Zx -> Bool
 gfpxEgcd (PrimeInteger p) f0 g0 =
@@ -614,27 +675,6 @@ gfpxEgcd (PrimeInteger p) f0 g0 =
     (h,(s,t)) = Gfpx.egcd p f g
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
-
-gfpxComposeEvaluate :: PrimeInteger -> Zx -> Zx -> Integer -> Bool
-gfpxComposeEvaluate (PrimeInteger p) f0 g0 x0 =
-    (toInteger (Gfpx.degree f * Gfpx.degree g) > maxDegree) ||
-    (Gfpx.evaluate p (Gfpx.compose p f g) x ==
-     Gfpx.evaluate p f (Gfpx.evaluate p g x))
-  where
-    f = Gfpx.fromZx p f0
-    g = Gfpx.fromZx p g0
-    x = Prime.fromInteger p x0
-
-gfpxMultiplyExpRemainder :: PrimeInteger -> Zx -> Zx -> Zx -> (NonNegative Integer) -> Bool
-gfpxMultiplyExpRemainder (PrimeInteger p) f0 g0 h0 (NonNegative k) =
-    (toInteger (Gfpx.degree f) + toInteger (Gfpx.degree g) * k > maxDegree) ||
-    (Gfpx.isZero f) ||
-    (Gfpx.multiplyExpRemainder p f g h k ==
-     Gfpx.remainder p (Gfpx.multiplyExp p g h k) f)
-  where
-    f = Gfpx.fromZx p f0
-    g = Gfpx.fromZx p g0
-    h = Gfpx.fromZx p h0
 
 gfpxRoots :: PrimeInteger -> Zx -> Bool
 gfpxRoots (PrimeInteger p) f0 =
@@ -696,9 +736,35 @@ gfpxSquareFreeDecomposition (PrimeInteger p) fs0 =
     g = Gfpx.squareFreeRecomposition p fs
     hs = Gfpx.squareFreeDecomposition p g
 
-gfpxFactorMonic :: OddPrimeInteger -> [ZxMonic] -> Int -> Bool
-gfpxFactorMonic (OddPrimeInteger p) fs0 r0 =
-    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 5) ||
+gfpxSplitBerlekamp :: PrimeInteger -> ZxMonic -> Bool
+gfpxSplitBerlekamp (PrimeInteger p) (ZxMonic f0) =
+    (toInteger (Gfpx.degree f) > maxDegree `div` 2) ||
+    (case Gfpx.splitBerlekamp p f of
+        Nothing -> Gfpx.irreducible p f
+        Just (g,h) ->
+          Gfpx.isMonic g && not (Gfpx.isOne g) &&
+          Gfpx.isMonic h && not (Gfpx.isOne h) &&
+          Gfpx.multiply p g h == f) ||
+    (not $ Gfpx.squareFree p f)
+  where
+    f = Gfpx.fromZx p f0
+
+gfpxFactorMonicBerlekamp :: PrimeInteger -> [ZxMonic] -> Bool
+gfpxFactorMonicBerlekamp (PrimeInteger p) fs0 =
+    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 2) ||
+    (all ((\k -> 0 < k) . snd) gks &&
+     all (not . Gfpx.isConstant . fst) gks &&
+     all (Gfpx.isMonic . fst) gks &&
+     all (Gfpx.irreducible p . fst) gks &&
+     Gfpx.product p (map (uncurry (Gfpx.exp p)) gks) == f)
+  where
+    fs = map (Gfpx.fromZx p . unZxMonic) fs0
+    f = Gfpx.product p fs
+    gks = Gfpx.factorMonicBerlekamp p f
+
+gfpxFactorMonic :: PrimeInteger -> [ZxMonic] -> Int -> Bool
+gfpxFactorMonic (PrimeInteger p) fs0 r0 =
+    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 2) ||
     (all ((\k -> 0 < k) . snd) gks &&
      all (not . Gfpx.isConstant . fst) gks &&
      all (Gfpx.isMonic . fst) gks &&
@@ -726,20 +792,75 @@ testGfpx = do
     test ("GF(p)[x] multiplication evaluation",gfpxMultiplyEvaluate)
     test ("GF(p)[x] multiplication by a constant returns valid data structure",gfpxMultiplyConstantValid)
     test ("GF(p)[x] multiplication by a power returns valid data structure",gfpxMultiplyPowerValid)
+    test ("GF(p)[x] composition evaluation",gfpxComposeEvaluate)
     test ("GF(p)[x] division satisfies f == q*g + r",gfpxDivision)
     test ("GF(p)[x] quotient satisfies (f*g) / f == g",gfpxQuotientMultiply)
-    test ("GF(p)[x] extended gcd is correct",gfpxEgcd)
-    test ("GF(p)[x] composition evaluation",gfpxComposeEvaluate)
     test ("GF(p)[x] modular exponentiation is correct",gfpxMultiplyExpRemainder)
+    test ("GF(p)[x] extended gcd is correct",gfpxEgcd)
     test ("GF(p)[x] root finding is correct",gfpxRoots)
     test ("GF(p)[x] irreducibility test is correct",gfpxIrreducible)
     test ("GF(p)[x] Frobenius endomorphism returns valid data structure",gfpxFrobeniusValid)
     test ("GF(p)[x] Frobenius endomorphism result is in range",gfpxFrobeniusRange)
-    test ("GF(p)[x] in Frobenius endomorphism range iff derivative is zero",gfpxFrobeniusRangeDerivative)
+    test ("GF(p)[x] Frobenius endomorphism range iff derivative is zero",gfpxFrobeniusRangeDerivative)
     test ("GF(p)[x] Frobenius endomorphism inverse is correct",gfpxFrobeniusInverse)
     test ("GF(p)[x] square-free test has no false positives",gfpxSquareFree)
     test ("GF(p)[x] square-free decomposition is correct",gfpxSquareFreeDecomposition)
-    testN 100 ("GF(p)[x] monic factorization is correct",gfpxFactorMonic)
+    test ("GF(p)[x] Berlekamp square-free factoring is correct",gfpxSplitBerlekamp)
+    test ("GF(p)[x] Berlekamp monic factorization is correct",gfpxFactorMonicBerlekamp)
+    test ("GF(p)[x] monic factorization is correct",gfpxFactorMonic)
+
+-------------------------------------------------------------------------------
+-- Testing the Berlekamp-Zassenhaus algorithm
+-------------------------------------------------------------------------------
+
+bzFactorCoeffBound :: ZxNonZero -> ZxNonZero -> Bool
+bzFactorCoeffBound (ZxNonZero g) (ZxNonZero h) =
+    all (\(_,c) -> abs c <= b) (Zx.monomials g)
+  where
+    f = Zx.multiply g h
+    b = Bz.factorCoeffBound f
+
+bzHenselLiftQuadratic :: PrimeInteger -> Positive Int -> ZxMonicNotOne -> ZxMonicNotOne -> Bool
+bzHenselLiftQuadratic (PrimeInteger p) (Positive k) (ZxMonicNotOne g0) (ZxMonicNotOne h0) =
+    k > 4 ||
+    pk > 1000 ||
+    not (Gfpx.isOne z) ||  -- Precondition: g and h must be coprime
+    (m' == pk &&
+     g' == gk &&  -- Therefore monic, equal to g mod p, and same degree as g
+     h' == hk &&  -- Therefore monic, equal to h mod p, and same degree as h
+     Gfpx.isOne
+       (Gfpx.add m' (Gfpx.multiply m' s' g') (Gfpx.multiply m' t' h')) &&
+     Gfpx.degree s' < Gfpx.degree h' &&
+     Gfpx.degree t' < Gfpx.degree g')
+  where
+    pk = p ^ ((2 :: Integer) ^ k)
+    gk = Gfpx.fromZx pk g0
+    hk = Gfpx.fromZx pk h0
+    f = Zx.multiply g0 h0  -- f mod pk == (gk * hk) mod pk
+    g = Gfpx.fromZx p g0   -- g == gk mod p
+    h = Gfpx.fromZx p h0   -- h == hk mod p
+    (z,(s,t)) = Gfpx.egcd p g h
+    (m',(g',h',s',t')) = iterate (Bz.henselLiftQuadratic f) (p,(g,h,s,t)) !! k
+
+bzFactor :: [ZxNonZero] -> Bool
+bzFactor fs0 =
+    (toInteger (sum (map Zx.degree fs)) > maxDegree `div` 2) ||
+    (0 < c &&
+     all ((\k -> 0 < k) . snd) gks &&
+     (gks == [(Zx.constant (-1), 1)] ||
+      all (not . Zx.isConstant . fst) gks) &&
+     all (Bz.irreducible . fst) gks &&
+     Zx.multiplyConstant c (Zx.product (map (uncurry Zx.exp) gks)) == f)
+  where
+    fs = map unZxNonZero fs0
+    f = Zx.product fs
+    (c,gks) = Bz.factor f
+
+testBz :: IO ()
+testBz = do
+    test ("BZ factor coefficient bound is correct",bzFactorCoeffBound)
+    test ("BZ quadratic Hensel lifting is correct",bzHenselLiftQuadratic)
+    test ("BZ factoring is correct",bzFactor)
 
 -------------------------------------------------------------------------------
 -- Testing the subring Z[w] of the number field Q(w)
@@ -891,16 +1012,17 @@ testNfs = do
     test ("NFS smooth integer test excludes zero",nfsSmoothIntegerNonZero)
     test ("NFS Gaussian elimination is correct",nfsGaussianElimination)
 
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Main function
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 main :: IO ()
 main = do
     testUtil
     testGaussian
-    testZx
     testPrime
+    testZx
     testGfpx
+    testBz
     testNfzw
     testNfs

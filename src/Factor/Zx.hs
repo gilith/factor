@@ -14,6 +14,7 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
 import Factor.Util
+import qualified Factor.Prime as Prime
 
 -------------------------------------------------------------------------------
 -- Monomials in Z[x]
@@ -109,6 +110,12 @@ linearCoeff f = powerCoeff f 1
 
 leadingCoeff :: Zx -> Integer
 leadingCoeff f = powerCoeff f (degree f)
+
+trailingCoeff :: Zx -> (Int,Integer)
+trailingCoeff f =
+    case monomials f of
+      [] -> error "trailing coefficient is undefined for zero polynomial"
+      m : _ -> m
 
 monomials :: Zx -> [(Int,Integer)]
 monomials = IntMap.toAscList . coeffMap
@@ -231,6 +238,18 @@ exp :: Zx -> Integer -> Zx
 exp = multiplyExp one
 
 -------------------------------------------------------------------------------
+-- Polynomial composition
+-------------------------------------------------------------------------------
+
+compose :: Zx -> Zx -> Zx
+compose f g = align 0 $ IntMap.foldrWithKey fma (0,zero) $ coeffMap f
+  where
+    fma i c z = (i, add (align i z) (constant c))
+
+    align i (d,z) = if k <= 0 then z else multiplyExp z g (toInteger k)
+      where k = d - i
+
+-------------------------------------------------------------------------------
 -- Division
 -------------------------------------------------------------------------------
 
@@ -259,7 +278,11 @@ remainder :: Zx -> Zx -> Zx
 remainder f g = snd $ Factor.Zx.division f g
 
 divides :: Zx -> Zx -> Bool
-divides f g = isZero g || (not (isZero f) && isZero (remainder g f))
+divides f g = isZero g || (not (isZero f) && trDiv && isZero (remainder g f))
+  where
+    trDiv = ft <= gt && Factor.Util.divides fn gn  -- fast check
+    (ft,fn) = trailingCoeff f
+    (gt,gn) = trailingCoeff g
 
 exactQuotientConstant :: Integer -> Zx -> Zx
 exactQuotientConstant 0 _ = error "Z[x] exact quotient by constant 0"
@@ -369,7 +392,33 @@ squareFreeRecomposition al = fst $ foldr mult (one,one) al
   where mult a (f,g) = (multiply g' f, g') where g' = multiply a g
 
 -------------------------------------------------------------------------------
--- Factorization using the Zassenhaus algorithm
+-- Swinnerton-Dyer polynomials
 --
--- https://en.wikipedia.org/wiki/Factorization_of_polynomials
+-- https://mathworld.wolfram.com/Swinnerton-DyerPolynomial.html
 -------------------------------------------------------------------------------
+
+composePlusMinusSqrt :: Zx -> Integer -> Zx
+composePlusMinusSqrt = go
+  where
+    go f 0 = square f
+    go f a = Factor.Zx.sum (mult (monomials f))
+      where
+        mult [] = []
+        mult ((n,c) : ncs) = multiply xan (Factor.Zx.sum row) : mult ncs
+          where
+            row = constant c : map multm ncs
+            multm (m,d) = multiplyConstant d (ds !! (m - (n + 1)))
+            xan = multiplyConstant c (Factor.Zx.exp xa (toInteger n))
+        xa = Factor.Zx.subtract (square variable) (constant a)
+        ds = map (foldr (\m z -> add m (multiplyConstant a z)) zero) bs
+
+    bs = map (map mon . reverse . filter pos . monomials) $ tail $
+         iterate (multiply (Factor.Zx.subtract variable one)) one
+    pos (_,c) = 0 <= c
+    mon (n,c) = monomial n (2 * c)
+
+swinnertonDyer :: [Zx]
+swinnertonDyer = go variable Prime.list
+  where
+    go f ps = g : go g (tail ps)
+      where g = composePlusMinusSqrt f (head ps)

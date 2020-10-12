@@ -192,8 +192,8 @@ product p = foldr (multiply p) one
 multiplyConstant :: Prime -> Gfp -> Gfpx -> Gfpx
 multiplyConstant _ 0 _ = zero
 multiplyConstant _ 1 f = f
-multiplyConstant p c f =
-    f {coeffMap = IntMap.map (Prime.multiply p c) (coeffMap f)}
+multiplyConstant p c f = fromNormCoeffMap $ IntMap.mapMaybe m $ coeffMap f
+  where m x = if y == 0 then Nothing else Just y where y = Prime.multiply p c x
 
 multiplyPower :: Int -> Gfpx -> Gfpx
 multiplyPower 0 f = f
@@ -217,6 +217,18 @@ multiplyExp p z0 f0 k0 = go z0 f0 k0
 
 exp :: Prime -> Gfpx -> Integer -> Gfpx
 exp p = multiplyExp p one
+
+-------------------------------------------------------------------------------
+-- Polynomial composition
+-------------------------------------------------------------------------------
+
+compose :: Prime -> Gfpx -> Gfpx -> Gfpx
+compose p f g = align 0 $ IntMap.foldrWithKey fma (0,zero) $ coeffMap f
+  where
+    fma i c z = (i, add p (align i z) (constant c))
+
+    align i (d,z) = if k <= 0 then z else multiplyExp p z g (toInteger k)
+      where k = d - i
 
 -------------------------------------------------------------------------------
 -- Division
@@ -244,6 +256,33 @@ remainder p f g = snd $ Factor.Gfpx.division p f g
 
 divides :: Prime -> Gfpx -> Gfpx -> Bool
 divides p f g = isZero g || (not (isZero f) && isZero (remainder p g f))
+
+-------------------------------------------------------------------------------
+-- Ring operations modulo a nonzero polynomial f
+-------------------------------------------------------------------------------
+
+multiplyRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx
+multiplyRemainder p f g h = remainder p (multiply p g h) f
+
+squareRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx
+squareRemainder p f g = multiplyRemainder p f g g
+
+multiplyExpRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Integer -> Gfpx
+multiplyExpRemainder _ _ z _ _ | isZero z = zero
+multiplyExpRemainder p f z _ 0 = remainder p z f
+multiplyExpRemainder _ _ _ g _ | isZero g = zero
+multiplyExpRemainder p f z g _ | isOne g = remainder p z f
+multiplyExpRemainder p f z0 g0 k0 = go z0 g0 k0
+  where
+    go z _ 0 = z
+    go z g k = go z' g' k'
+      where
+        z' = if even k then z else multiplyRemainder p f z g
+        g' = squareRemainder p f g
+        k' = k `div` 2
+
+expRemainder :: Prime -> Gfpx -> Gfpx -> Integer -> Gfpx
+expRemainder p f = multiplyExpRemainder p f one
 
 -------------------------------------------------------------------------------
 -- Every Euclidean domain a admits the definition of a greatest common
@@ -283,45 +322,6 @@ chineseRemainder p f g =
     fg = multiply p f g
     sf = multiply p s f
     tg = multiply p t g
-
--------------------------------------------------------------------------------
--- Polynomial composition
--------------------------------------------------------------------------------
-
-compose :: Prime -> Gfpx -> Gfpx -> Gfpx
-compose p f g = align 0 $ IntMap.foldrWithKey fma (0,zero) $ coeffMap f
-  where
-    fma i c z = (i, add p (align i z) (constant c))
-
-    align i (d,z) = if k <= 0 then z else multiplyExp p z g (toInteger k)
-      where k = d - i
-
--------------------------------------------------------------------------------
--- Ring operations modulo a nonzero polynomial f
--------------------------------------------------------------------------------
-
-multiplyRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx
-multiplyRemainder p f g h = remainder p (multiply p g h) f
-
-squareRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx
-squareRemainder p f g = multiplyRemainder p f g g
-
-multiplyExpRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Integer -> Gfpx
-multiplyExpRemainder _ _ z _ _ | isZero z = zero
-multiplyExpRemainder p f z _ 0 = remainder p z f
-multiplyExpRemainder _ _ _ g _ | isZero g = zero
-multiplyExpRemainder p f z g _ | isOne g = remainder p z f
-multiplyExpRemainder p f z0 g0 k0 = go z0 g0 k0
-  where
-    go z _ 0 = z
-    go z g k = go z' g' k'
-      where
-        z' = if even k then z else multiplyRemainder p f z g
-        g' = squareRemainder p f g
-        k' = k `div` 2
-
-expRemainder :: Prime -> Gfpx -> Gfpx -> Integer -> Gfpx
-expRemainder p f = multiplyExpRemainder p f one
 
 -------------------------------------------------------------------------------
 -- Finding all roots of a polynomial [Briggs1998, sec 4.2]
@@ -484,6 +484,66 @@ squareFreeRecomposition p al = fst $ foldr mult (one,one) al
   where mult a (f,g) = (multiply p g' f, g') where g' = multiply p a g
 
 -------------------------------------------------------------------------------
+-- Factorization using Berlekamp's algorithm
+--
+-- Input:  Polynomial f assumed to be monic and square-free
+-- Output: List of irreducible factors of f
+--
+-- https://en.wikipedia.org/wiki/Berlekamp%27s_algorithm
+-------------------------------------------------------------------------------
+
+matrixBerlekamp :: Prime -> Gfpx -> [[Gfp]]
+matrixBerlekamp p f = List.transpose rows
+  where
+    rows = map row (zip (tail il) (iterate (multiplyRemainder p f xp) xp))
+    row (i,xpi) = map (entry i xpi) il
+    entry i xpi j = if i == j then Prime.subtract p x 1 else x
+      where x = powerCoeff xpi j
+    il = [0..(n-1)]
+    n = degree f
+    xp = expRemainder p f variable p
+
+nullBerlekamp :: Prime -> [[Gfp]] -> Maybe [Gfp]
+nullBerlekamp p = go
+  where
+    go ([] : _) = Nothing
+    go rows =
+        case nr of
+          [] -> Just (1 : map (const 0) (snd (head zr)))
+          (xh,xt) : yl ->
+              case go (yl' ++ map snd zr) of
+                Nothing -> Nothing
+                Just v -> Just (Prime.negate p (dotprod xt' v) : v)
+            where
+              xh' = Prime.invert p xh
+              xt' = map (Prime.multiply p xh') xt
+              yl' = map subx yl
+              subx (yh,yt) = zipWith (cancel yh) yt xt'
+      where
+        (zr,nr) = List.partition ((==) 0 . fst) (map uncons rows)
+
+    cancel a b c = Prime.subtract p b (Prime.multiply p a c)
+    dotprod u v = Prime.sum p (zipWith (Prime.multiply p) u v)
+    uncons l = (head l, tail l)
+
+splitBerlekamp :: Prime -> Gfpx -> Maybe (Gfpx,Gfpx)
+splitBerlekamp _ f | not (isMonic f) =
+    error "GF(p)[x] Berlekamp factorization requires monic input"
+splitBerlekamp _ f | isLinear f = Nothing
+splitBerlekamp p f =
+    case nullBerlekamp p m of
+      Nothing -> Nothing
+      Just v -> Just (h, quotient p f h)
+        where
+          h = head $ filter (not . isOne) (map gi [0..(p-1)])
+          -- Property: Product { gi i | 0 <= i < p } = f
+          gi = Factor.Gfpx.gcd p f . add p g . constant
+          -- Property: expRemainder p f g p == g
+          g = fromCoeff (0 : v)
+  where
+    m = matrixBerlekamp p f
+
+-------------------------------------------------------------------------------
 -- Distinct degree factorization
 --
 -- Input:  Polynomial f assumed to be monic and square-free
@@ -512,7 +572,7 @@ factorDistinctDegree p f0 =
         x'' = remainder p x' f'
 
 -------------------------------------------------------------------------------
--- Equal-degree factorization using the Cantor–Zassenhaus probabilistic algorithm
+-- Equal-degree factorization
 --
 -- Input: Polynomial f assumed to be product of distinct monic irreducible
 --        degree d polynomials
@@ -521,18 +581,24 @@ factorDistinctDegree p f0 =
 -- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
 -------------------------------------------------------------------------------
 
+factorEqualDegreeBerlekamp :: Prime -> Gfpx -> Int -> [Gfpx]
+factorEqualDegreeBerlekamp _ f d | degree f == d = [f]
+factorEqualDegreeBerlekamp p f d =
+    case splitBerlekamp p f of
+      Just (g,h) -> factorEqualDegreeBerlekamp p g d ++
+                    factorEqualDegreeBerlekamp p h d
+      Nothing -> error "Berlekamp could not split polynomial"
+
 factorEqualDegree :: RandomGen r => Prime -> Gfpx -> Int -> r -> ([Gfpx],r)
-factorEqualDegree _ f d r | degree f == d =
-    ([f],r)
-factorEqualDegree p _ _ _ | p == 2 =
-    error "GF(2)[x] equal degree factorization not supported"
+factorEqualDegree p f d r | p < 3 = (factorEqualDegreeBerlekamp p f d, r)
+factorEqualDegree _ f d r | degree f == d = ([f],r)
 factorEqualDegree p f d r0 = go [] [f] r0
   where
     go dl [] r = (dl,r)
     go dl hl r = go (dl' ++ dl) hl' r'
       where
         (u,r') = uniform p n r
-        v = Factor.Gfpx.subtract p (expRemainder p f u pd) one
+        v = Factor.Gfpx.subtract p (expRemainder p f u k) one
         (dl',hl') = List.partition degreeD $ concatMap (split v) hl
 
     split v h =
@@ -543,28 +609,45 @@ factorEqualDegree p f d r0 = go [] [f] r0
     degreeD h = degree h == d
 
     n = degree f
-    pd = p ^ d
+    k = (p ^ d - 1) `div` 2
 
 -------------------------------------------------------------------------------
--- Factorization of monic polynomials
+-- Square-free factorization
 --
--- Input:  Monic polynomial f
--- Output: List of irreducible polynomials g_i and positive integers k_i
---         such that f = product_i g_i^k_i
---
--- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-- Input:  Polynomial f assumed to be monic and square-free
+-- Output: List of monic irreducible factors of f
 -------------------------------------------------------------------------------
+
+factorSquareFreeBerlekamp :: Prime -> Gfpx -> [Gfpx]
+factorSquareFreeBerlekamp _ f | isOne f = []
+factorSquareFreeBerlekamp _ f | isLinear f = [f]
+factorSquareFreeBerlekamp p f = concatMap fed (factorDistinctDegree p f)
+  where fed = uncurry $ factorEqualDegreeBerlekamp p
 
 factorSquareFree :: RandomGen r => Prime -> Gfpx -> r -> ([Gfpx],r)
+factorSquareFree _ f r | isOne f = ([],r)
 factorSquareFree _ f r | isLinear f = ([f],r)
 factorSquareFree p f r0 = foldr fed ([],r0) (factorDistinctDegree p f)
   where
     fed (h,d) (gl,r) = (gl' ++ gl, r')
       where (gl',r') = factorEqualDegree p h d r
 
+-------------------------------------------------------------------------------
+-- Factorization of monic polynomials
+--
+-- Input:  Monic polynomial f
+-- Output: List of monic irreducible polynomials g_i and positive integers k_i
+--         such that f = product_i g_i^k_i
+--
+-- https://en.wikipedia.org/wiki/Factorization_of_polynomials_over_finite_fields
+-------------------------------------------------------------------------------
+
+factorMonicBerlekamp :: Prime -> Gfpx -> [(Gfpx,Integer)]
+factorMonicBerlekamp p = concat . zipWith fsf [1..] . squareFreeDecomposition p
+  where fsf k h = map (\g -> (g,k)) $ factorSquareFreeBerlekamp p h
+
 factorMonic :: RandomGen r => Prime -> Gfpx -> r -> ([(Gfpx,Integer)],r)
-factorMonic p f r0 = foldr fsf ([],r0) (zip (squareFreeDecomposition p f) [1..])
+factorMonic p f r0 = foldr fsf ([],r0) (zip [1..] (squareFreeDecomposition p f))
   where
-    fsf (h,_) gkl_r | isOne h = gkl_r
-    fsf (h,k) (gkl,r) = (map (\g -> (g,k)) gl ++ gkl, r')
+    fsf (k,h) (gkl,r) = (map (\g -> (g,k)) gl ++ gkl, r')
       where (gl,r') = factorSquareFree p h r
