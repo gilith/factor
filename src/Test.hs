@@ -11,10 +11,12 @@ module Main
   ( main )
 where
 
+import System.Random (StdGen)
 import qualified System.Random as Random
 import Test.QuickCheck
 
 import qualified Factor.Bz as Bz
+import qualified Factor.Ec as Ec
 import Factor.Gaussian (Gaussian(..))
 import qualified Factor.Gaussian as Gaussian
 import qualified Factor.Gfpx as Gfpx
@@ -38,6 +40,9 @@ maxDegree = 100
 -------------------------------------------------------------------------------
 -- Helper functions
 -------------------------------------------------------------------------------
+
+instance Arbitrary StdGen where
+  arbitrary = fmap Random.mkStdGen arbitrary
 
 checkWith :: Testable prop => Args -> (String,prop) -> IO ()
 checkWith args (desc,prop) = do
@@ -304,9 +309,11 @@ primeInvert (PrimePowerInteger p) n =
 
 primeSqrt :: PrimeInteger -> Integer -> Bool
 primeSqrt (PrimeInteger p) n =
-    (Prime.square p (Prime.sqrt p x) /= x) == Prime.nonResidue p n
+    y <= Prime.negate p y &&
+    (Prime.square p y /= x) == Prime.nonResidue p n
   where
     x = Prime.fromInteger p n
+    y = Prime.sqrt p x
 
 testPrime :: IO ()
 testPrime = do
@@ -762,8 +769,8 @@ gfpxFactorMonicBerlekamp (PrimeInteger p) fs0 =
     f = Gfpx.product p fs
     gks = Gfpx.factorMonicBerlekamp p f
 
-gfpxFactorMonic :: PrimeInteger -> [ZxMonic] -> Int -> Bool
-gfpxFactorMonic (PrimeInteger p) fs0 r0 =
+gfpxFactorMonic :: PrimeInteger -> [ZxMonic] -> StdGen -> Bool
+gfpxFactorMonic (PrimeInteger p) fs0 r =
     (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 2) ||
     (all ((\k -> 0 < k) . snd) gks &&
      all (not . Gfpx.isConstant . fst) gks &&
@@ -773,7 +780,6 @@ gfpxFactorMonic (PrimeInteger p) fs0 r0 =
   where
     fs = map (Gfpx.fromZx p . unZxMonic) fs0
     f = Gfpx.product p fs
-    r = Random.mkStdGen r0
     (gks,_) = Gfpx.factorMonic p f r
 
 testGfpx :: IO ()
@@ -808,6 +814,115 @@ testGfpx = do
     test ("GF(p)[x] Berlekamp square-free factoring is correct",gfpxSplitBerlekamp)
     test ("GF(p)[x] Berlekamp monic factorization is correct",gfpxFactorMonicBerlekamp)
     test ("GF(p)[x] monic factorization is correct",gfpxFactorMonic)
+
+-------------------------------------------------------------------------------
+-- Testing elliptic curves
+-------------------------------------------------------------------------------
+
+data EcInteger = EcInteger Integer
+  deriving (Eq,Ord,Show)
+
+-- Must not be divisible by 2 or 3, so equal to 1 or 5 (mod 6)
+instance Arbitrary EcInteger where
+  arbitrary = do
+    s <- arbitrary
+    Positive k <- arbitrary
+    let n = 6 * k + (if s then 1 else (-1))
+    return $ EcInteger n
+
+data EcPrimeInteger = EcPrimeInteger Integer
+  deriving (Eq,Ord,Show)
+
+instance Arbitrary EcPrimeInteger where
+  arbitrary = do
+    Positive i <- arbitrary
+    return $ EcPrimeInteger (Prime.list !! (i + 1))
+
+ecUniformCurve :: EcInteger -> StdGen -> Bool
+ecUniformCurve (EcInteger k) r =
+    not (Ec.singular e) &&
+    p /= Ec.Infinity &&
+    Ec.onCurve e p
+  where
+    ((e,p),_) = Ec.uniformCurve k r
+
+ecUniformPoint :: EcPrimeInteger -> StdGen -> Bool
+ecUniformPoint (EcPrimeInteger k) r0 =
+    p /= Ec.Infinity &&
+    Ec.onCurve e p
+  where
+    ((e,_),r1) = Ec.uniformCurve k r0
+    (p,_) = Ec.uniformPoint e r1
+
+ecNegateOnCurve :: EcInteger -> StdGen -> Bool
+ecNegateOnCurve (EcInteger k) r =
+    Ec.onCurve e (Ec.negate e p)
+  where
+    ((e,p),_) = Ec.uniformCurve k r
+
+ecDoubleOnCurve :: EcInteger -> StdGen -> Bool
+ecDoubleOnCurve (EcInteger k) r =
+    case Ec.doubleF e p of
+      Left n -> properDivisor n k
+      Right p' -> Ec.onCurve e p'
+  where
+    ((e,p),_) = Ec.uniformCurve k r
+
+ecAddOnCurve :: EcPrimeInteger -> StdGen -> Bool
+ecAddOnCurve (EcPrimeInteger k) r =
+    Ec.onCurve e (Ec.add e p1 p2)
+  where
+    ((e,p1),r') = Ec.uniformCurve k r
+    (p2,_) = Ec.uniformPoint e r'
+
+ecAddNegate :: EcInteger -> StdGen -> Bool
+ecAddNegate (EcInteger k) r =
+    case Ec.addF e p (Ec.negate e p) of
+      Left n -> properDivisor n k
+      Right p' -> p' == Ec.Infinity
+  where
+    ((e,p),_) = Ec.uniformCurve k r
+
+ecAddComm :: EcPrimeInteger -> StdGen -> Bool
+ecAddComm (EcPrimeInteger k) r =
+    Ec.add e p1 p2 == Ec.add e p2 p1
+  where
+    ((e,p1),r') = Ec.uniformCurve k r
+    (p2,_) = Ec.uniformPoint e r'
+
+ecAddAssoc :: EcPrimeInteger -> StdGen -> Bool
+ecAddAssoc (EcPrimeInteger k) r0 =
+    if Ec.add e (Ec.add e p1 p2) p3 == Ec.add e p1 (Ec.add e p2 p3) then True
+    else error $ unlines [show e, show p1, show p2, show p3]
+  where
+    ((e,p1),r1) = Ec.uniformCurve k r0
+    (p2,r2) = Ec.uniformPoint e r1
+    (p3,_) = Ec.uniformPoint e r2
+
+ecMultiplyOrder :: EcPrimeInteger -> StdGen -> Bool
+ecMultiplyOrder (EcPrimeInteger k) r =
+    Ec.multiply e p (Ec.order e) == Ec.Infinity
+  where
+    ((e,p),_) = Ec.uniformCurve k r
+
+ecTraceOfFrobeniusMod2 :: EcPrimeInteger -> StdGen -> Bool
+ecTraceOfFrobeniusMod2 (EcPrimeInteger k) r =
+    even (Ec.traceOfFrobenius e) == odd (length (Gfpx.roots k (Ec.rhs e)))
+  where
+    ((e,_),_) = Ec.uniformCurve k r
+
+testEc :: IO ()
+testEc = do
+    test ("EC uniform curve returns point on curve",ecUniformCurve)
+    test ("EC uniform point is on the curve",ecUniformPoint)
+    test ("EC negate point is on the curve",ecNegateOnCurve)
+    test ("EC double point is on the curve",ecDoubleOnCurve)
+    test ("EC add point is on the curve",ecAddOnCurve)
+    test ("EC add point to its negation is the identity",ecAddNegate)
+    test ("EC add point is commutative",ecAddComm)
+    test ("EC add point is associative",ecAddAssoc)
+    test ("EC multiply point by group order is the identity",ecMultiplyOrder)
+    test ("EC trace of Frobenius mod 2",ecTraceOfFrobeniusMod2)
 
 -------------------------------------------------------------------------------
 -- Testing the Berlekamp-Zassenhaus algorithm
@@ -847,14 +962,14 @@ bzFactor fs0 =
     (toInteger (sum (map Zx.degree fs)) > maxDegree `div` 2) ||
     (0 < c &&
      all ((\k -> 0 < k) . snd) gks &&
-     (gks == [(Zx.constant (-1), 1)] ||
-      all (not . Zx.isConstant . fst) gks) &&
+     all (not . Zx.isConstant . fst) (if minus1 then tail gks else gks) &&
      all (Bz.irreducible . fst) gks &&
      Zx.multiplyConstant c (Zx.product (map (uncurry Zx.exp) gks)) == f)
   where
     fs = map unZxNonZero fs0
     f = Zx.product fs
     (c,gks) = Bz.factor f
+    minus1 = not (null gks) && head gks == (Zx.constant (-1), 1)
 
 testBz :: IO ()
 testBz = do
@@ -1023,6 +1138,7 @@ main = do
     testPrime
     testZx
     testGfpx
+    testEc
     testBz
     testNfzw
     testNfs

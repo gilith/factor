@@ -354,6 +354,9 @@ algebraicSquareRoot n f m f' sq =
 
 -------------------------------------------------------------------------------
 -- The number field sieve
+--
+-- Input: An odd integer greater than 5
+-- Output: Either a nontrivial factor of the input or failure
 -------------------------------------------------------------------------------
 
 data Config =

@@ -118,6 +118,9 @@ multiply p x y = Factor.Prime.fromInteger p (x * y)
 square :: Prime -> Gfp -> Gfp
 square p x = multiply p x x
 
+cube :: Prime -> Gfp -> Gfp
+cube p x = multiply p x (square p x)
+
 product :: Prime -> [Gfp] -> Gfp
 product p = foldr (multiply p) 1
 
@@ -142,19 +145,32 @@ exp2 :: Prime -> Gfp -> Int -> Gfp
 exp2 _ x 0 = x
 exp2 p x k = exp2 p (square p x) (k - 1)
 
-invert :: Prime -> Gfp -> Gfp
-invert p x =
-    if g /= 1 then error $ "Prime.invert: " ++ show x
-    else if t < 0 then t + p
-    else t
+invertF :: Prime -> Gfp -> Factor Gfp
+invertF _ 0 = error "cannot invert zero"
+invertF p x =
+    if g == 1 then Right (if t < 0 then t + p else t) else Left g
   where
     (g,(_,t)) = egcd p x
 
+invert :: Prime -> Gfp -> Gfp
+invert p x = runFactor $ invertF p x
+
+divideF :: Prime -> Gfp -> Gfp -> Factor Gfp
+divideF p x y = do
+    z <- invertF p y
+    return $ multiply p x z
+
 divide :: Prime -> Gfp -> Gfp -> Gfp
-divide p x y = multiply p x (invert p y)
+divide p x y = runFactor $ divideF p x y
+
+elements :: Prime -> [Gfp]
+elements p = [0 .. (p-1)]
 
 uniform :: RandomGen r => Prime -> r -> (Gfp,r)
 uniform p = Random.randomR (0, p - 1)
+
+uniformNonZero :: RandomGen r => Prime -> r -> (Gfp,r)
+uniformNonZero p = Random.randomR (1, p - 1)
 
 -------------------------------------------------------------------------------
 -- Square roots in GF(p) using the Tonelli-Shanks algorithm
@@ -176,11 +192,14 @@ nextNonResidue p n = if nonResidue p n then n else nextNonResidue p (n + 1)
 sqrt :: Prime -> Gfp -> Gfp
 sqrt 2 = id
 sqrt p =
-    if r == 1 then sqrt3Mod4
-    else if r == 2 then sqrt5Mod8
-    else tonelliShanks
+    norm .
+    (if r == 1 then sqrt3Mod4
+     else if r == 2 then sqrt5Mod8
+     else tonelliShanks)
   where
     (r,s) = divPower 2 (p - 1)
+
+    norm x = if 2 * x < p then x else p - x
 
     sqrt3Mod4 x = Factor.Prime.exp p x sqrt3Mod4Exp
 

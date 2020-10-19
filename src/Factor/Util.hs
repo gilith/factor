@@ -16,6 +16,16 @@ import qualified Data.List as List
 import Data.Maybe (isJust)
 
 -------------------------------------------------------------------------------
+-- Factoring monad
+-------------------------------------------------------------------------------
+
+type Factor a = Either Integer a
+
+runFactor :: Factor a -> a
+runFactor (Left n) = error $ "found a factor " ++ show n
+runFactor (Right a) = a
+
+-------------------------------------------------------------------------------
 -- Integer divides relation
 -------------------------------------------------------------------------------
 
@@ -28,6 +38,9 @@ divides :: Integer -> Integer -> Bool
 divides _ 0 = True
 divides 0 _ = False
 divides m n = n `mod` m == 0
+
+properDivisor :: Integer -> Integer -> Bool
+properDivisor m n = divides m n && not (isUnit m) && abs m /= abs n
 
 -------------------------------------------------------------------------------
 -- Integer division
@@ -55,6 +68,14 @@ divPower :: Integer -> Integer -> (Int,Integer)
 divPower m | m <= 1 = error "divPower argument must be positive non-unit"
 divPower m | otherwise = \n -> if n == 0 then (0,0) else go 0 n
   where go k n = if divides m n then go (k+1) (n `div` m) else (k,n)
+
+-------------------------------------------------------------------------------
+-- Integer factorial
+-------------------------------------------------------------------------------
+
+factorial :: Integer -> Integer
+factorial n | n <= 1 = 1
+factorial n = n * factorial (n - 1)
 
 -------------------------------------------------------------------------------
 -- Integer greatest common divisor

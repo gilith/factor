@@ -22,6 +22,7 @@ Library
   ghc-options: -Wall
   exposed-modules:
     Factor.Bz,
+    Factor.Ec,
     Factor.Gaussian,
     Factor.Gfpx,
     Factor.Nfs,

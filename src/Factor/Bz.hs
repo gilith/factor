@@ -168,5 +168,6 @@ ghci Factor/Bz.hs
 factor $ Zx.fromCoeff [4,47,-2,-23,18,10]
 factor $ Zx.swinnertonDyer !! 4
 factor $ Zx.multiply (Zx.swinnertonDyer !! 3) (Zx.swinnertonDyer !! 4)
+factor $ Zx.multiply (Zx.fromCoeff [2,-2]) (Zx.fromCoeff [-3,3])
 :show bindings
 -}
