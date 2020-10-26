@@ -16,6 +16,7 @@ import qualified Data.List as List
 import Data.Maybe (isNothing,mapMaybe)
 --import Debug.Trace (trace)
 
+import qualified Factor.Bz as Bz
 import qualified Factor.Gfpx as Gfpx
 import Factor.Nfzw (Ideal,Nfzw(..))
 import qualified Factor.Nfzw as Nfzw
@@ -61,10 +62,6 @@ defaultPolynomialConfig =
       {polynomialDegree = OptimalPolynomialDegree,
        polynomialBase = ClosestPolynomialBase,
        polynomialCoeff = SmallestPolynomialCoeff}
-
-irreduciblePolynomial :: Zx -> Maybe Prime
-irreduciblePolynomial f = List.find irred $ take 100 Prime.list
-  where irred p = Gfpx.irreducible p (Gfpx.fromZx p f)
 
 selectPolynomialDegree :: PolynomialDegree -> Integer -> Int
 selectPolynomialDegree (FixedPolynomialDegree d) _ = d
@@ -386,12 +383,9 @@ factor cfg n = do
     putStrLn $ "Working in Z[w] where w is a complex root of f and f(m) = n"
     putStrLn $ "  where f = " ++ show f
     putStrLn $ "  and m = " ++ show m
-    case irreduciblePolynomial f of
-      Just p -> putStrLn $ "Verified that f is irreducible in Z[x] " ++
-                           "(since it is irreducible in GF(" ++ show p ++
-                           ")[x])"
-      Nothing -> error $ "f does not appear to be irreducible in Z[x] " ++
-                         "(use this fact to factor n)"
+    case Bz.factor f of
+      (1,[(_,1)]) -> putStrLn "Verified that f is irreducible in Z[x]"
+      _ -> error "f is reduciblein Z[x] (use this fact to factor n)"
     let rfm = maxFactorBase (rationalFactorBaseConfig cfg) n
     let rfb = takeWhile ((>=) rfm) Prime.list
     putStrLn $ "Rational factor base contains " ++ show (length rfb) ++

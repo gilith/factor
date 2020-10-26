@@ -19,10 +19,10 @@ import Data.Maybe (isJust)
 -- Factoring monad
 -------------------------------------------------------------------------------
 
-type Factor a = Either Integer a
+type Factor f a = Either f a
 
-runFactor :: Factor a -> a
-runFactor (Left n) = error $ "found a factor " ++ show n
+runFactor :: Show f => Factor f a -> a
+runFactor (Left f) = error $ "found a factor " ++ show f
 runFactor (Right a) = a
 
 -------------------------------------------------------------------------------
@@ -91,6 +91,15 @@ egcd m n =
 
 coprime :: Integer -> Integer -> Bool
 coprime m n = gcd m n == 1
+
+chineseRemainder :: Integer -> Integer -> Integer -> Integer -> Integer
+chineseRemainder m n =
+    \i j -> (i*tn + j*sm) `mod` mn
+  where
+    (_,(s,t)) = egcd m n
+    mn = m * n
+    sm = s * m
+    tn = t * n
 
 -------------------------------------------------------------------------------
 -- Integer nth root function [1] satisfying

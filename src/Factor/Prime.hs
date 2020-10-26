@@ -145,17 +145,18 @@ exp2 :: Prime -> Gfp -> Int -> Gfp
 exp2 _ x 0 = x
 exp2 p x k = exp2 p (square p x) (k - 1)
 
-invertF :: Prime -> Gfp -> Factor Gfp
+invertF :: Prime -> Gfp -> Factor Integer Gfp
 invertF _ 0 = error "cannot invert zero"
-invertF p x =
-    if g == 1 then Right (if t < 0 then t + p else t) else Left g
+invertF _ 1 = Right 1
+invertF p x = if g == 1 then Right i else Left g
   where
     (g,(_,t)) = egcd p x
+    i = if t < 0 then t + p else t
 
 invert :: Prime -> Gfp -> Gfp
 invert p x = runFactor $ invertF p x
 
-divideF :: Prime -> Gfp -> Gfp -> Factor Gfp
+divideF :: Prime -> Gfp -> Gfp -> Factor Integer Gfp
 divideF p x y = do
     z <- invertF p y
     return $ multiply p x z

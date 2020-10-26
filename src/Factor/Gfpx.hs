@@ -17,7 +17,7 @@ import System.Random (RandomGen)
 
 import Factor.Prime (Gfp,Prime)
 import qualified Factor.Prime as Prime
-import qualified Factor.Util as Util
+import Factor.Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 
@@ -145,7 +145,7 @@ toSmallestZx p (Gfpx {degree = d, coeffMap = c}) =
 uniform :: RandomGen r => Prime -> Int -> r -> (Gfpx,r)
 uniform _ d r | d < 0 = (zero,r)
 uniform p d r = (fromCoeff l, r')
-  where (l,r') = Util.unfoldrN (Prime.uniform p) (d + 1) r
+  where (l,r') = unfoldrN (Prime.uniform p) (d + 1) r
 
 -------------------------------------------------------------------------------
 -- Ring operations
@@ -185,6 +185,9 @@ multiply p f g | otherwise = IntMap.foldrWithKey fma zero (coeffMap f)
 
 square :: Prime -> Gfpx -> Gfpx
 square p f = multiply p f f
+
+cube :: Prime -> Gfpx -> Gfpx
+cube p f = multiply p f (square p f)
 
 product :: Prime -> [Gfpx] -> Gfpx
 product p = foldr (multiply p) one
@@ -257,6 +260,51 @@ remainder p f g = snd $ Factor.Gfpx.division p f g
 divides :: Prime -> Gfpx -> Gfpx -> Bool
 divides p f g = isZero g || (not (isZero f) && isZero (remainder p g f))
 
+properDivisor :: Prime -> Gfpx -> Gfpx -> Bool
+properDivisor p f g =
+    Factor.Gfpx.divides p f g &&
+    not (isConstant f) &&
+    degree f < degree g
+
+-------------------------------------------------------------------------------
+-- Every Euclidean domain a admits the definition of a greatest common
+-- divisor function
+--
+--   egcd :: a -> a -> (a,(a,a))
+--
+-- such that if (g,(s,t)) = egcd x y then:
+--
+--   1. divides g x
+--   2. divides g y
+--   3. s*x + t*y == g
+-------------------------------------------------------------------------------
+
+egcd :: Prime -> Gfpx -> Gfpx -> (Gfpx,(Gfpx,Gfpx))
+egcd p = go
+  where
+    go f g | isZero g =
+        if isZero f then (zero,(zero,zero)) else (h, (constant x, zero))
+      where
+        x = Prime.invert p (leadingCoeff f)
+        h = multiplyConstant p x f
+    go f g | otherwise =
+        (h, (t, Factor.Gfpx.subtract p s (multiply p q t)))
+      where
+        (q,r) = Factor.Gfpx.division p f g
+        (h,(s,t)) = go g r
+
+gcd :: Prime -> Gfpx -> Gfpx -> Gfpx
+gcd p f g = fst $ Factor.Gfpx.egcd p f g
+
+chineseRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx -> Gfpx
+chineseRemainder p f g =
+    \x y -> remainder p (add p (multiply p x tg) (multiply p y sf)) fg
+  where
+    (_,(s,t)) = Factor.Gfpx.egcd p f g
+    fg = multiply p f g
+    sf = multiply p s f
+    tg = multiply p t g
+
 -------------------------------------------------------------------------------
 -- Ring operations modulo a nonzero polynomial f
 -------------------------------------------------------------------------------
@@ -284,44 +332,26 @@ multiplyExpRemainder p f z0 g0 k0 = go z0 g0 k0
 expRemainder :: Prime -> Gfpx -> Gfpx -> Integer -> Gfpx
 expRemainder p f = multiplyExpRemainder p f one
 
--------------------------------------------------------------------------------
--- Every Euclidean domain a admits the definition of a greatest common
--- divisor function
---
---   egcd :: a -> a -> (a,(a,a))
---
--- such that if (g,(s,t)) = egcd x y then:
---
---   1. divides g x
---   2. divides g y
---   3. s*x + t*y == g
--------------------------------------------------------------------------------
+composeRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx
+composeRemainder p f g h = remainder p (compose p g h) f
 
-egcd :: Prime -> Gfpx -> Gfpx -> (Gfpx,(Gfpx,Gfpx))
-egcd p = go
+invertRemainderF :: Prime -> Gfpx -> Gfpx -> Factor Gfpx Gfpx
+invertRemainderF _ _ h | isZero h = error "cannot invert zero polynomial"
+invertRemainderF p f h =
+    if isOne g then Right t else Left g
   where
-    go f g | isZero g =
-        if isZero f then (zero,(zero,zero)) else (h, (constant x, zero))
-      where
-        x = Prime.invert p (leadingCoeff f)
-        h = multiplyConstant p x f
-    go f g | otherwise =
-        (h, (t, Factor.Gfpx.subtract p s (multiply p q t)))
-      where
-        (q,r) = division p f g
-        (h,(s,t)) = go g r
+    (g,(_,t)) = Factor.Gfpx.egcd p f h
 
-gcd :: Prime -> Gfpx -> Gfpx -> Gfpx
-gcd p x y = fst $ egcd p x y
+invertRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx
+invertRemainder p f h = runFactor $ invertRemainderF p f h
 
-chineseRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx -> Gfpx
-chineseRemainder p f g =
-    \x y -> remainder p (add p (multiply p x tg) (multiply p y sf)) fg
-  where
-    (_,(s,t)) = egcd p f g
-    fg = multiply p f g
-    sf = multiply p s f
-    tg = multiply p t g
+divideRemainderF :: Prime -> Gfpx -> Gfpx -> Gfpx -> Factor Gfpx Gfpx
+divideRemainderF p f g h = do
+    i <- invertRemainderF p f h
+    return $ multiplyRemainder p f g i
+
+divideRemainder :: Prime -> Gfpx -> Gfpx -> Gfpx -> Gfpx
+divideRemainder p f g h = runFactor $ divideRemainderF p f g h
 
 -------------------------------------------------------------------------------
 -- Finding all roots of a polynomial [Briggs1998, sec 4.2]
@@ -373,8 +403,8 @@ totallySplits f p = if length rs == Zx.degree f then Just rs else Nothing
 irreducible :: Prime -> Gfpx -> Bool
 irreducible p f =
     isLinear f ||
-    (all (\e -> isOne (Factor.Gfpx.gcd p f (xpde e))) el &&
-     divides p f (xpde 1))
+    (all (isOne . Factor.Gfpx.gcd p f . xpde) el &&
+     isZero (xpde 1))
   where
     d = toInteger (degree f)
     el = reverse (map fst (fst (Prime.trialDivision d)))

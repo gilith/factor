@@ -19,6 +19,7 @@ import qualified Factor.Bz as Bz
 import qualified Factor.Ec as Ec
 import Factor.Gaussian (Gaussian(..))
 import qualified Factor.Gaussian as Gaussian
+import Factor.Gfpx (Gfpx)
 import qualified Factor.Gfpx as Gfpx
 import Factor.Nfs (PolynomialBase(..),PolynomialCoeff(..),PolynomialConfig(..),
                    PolynomialDegree(..),FactorBase,Row)
@@ -111,12 +112,26 @@ integerEgcd m n =
     divides g m &&
     divides g n &&
     s*m + t*n == g &&
-    0 <= g
+    0 <= g &&
+    abs t < max 2 (abs m) &&
+    abs s < max 2 (abs n)
   where
     (g,(s,t)) = egcd m n
 
 integerEgcdGcd :: Integer -> Integer -> Bool
 integerEgcdGcd m n = fst (egcd m n) == gcd m n
+
+integerChineseRemainder :: Positive Integer -> Positive Integer -> Integer -> Integer -> Bool
+integerChineseRemainder (Positive m) (Positive n) i0 j0 =
+    not (coprime m n) ||
+    (k `mod` m == i &&
+     k `mod` n == j &&
+     0 <= k &&
+     k < m * n)
+  where
+    k = chineseRemainder m n i j
+    i = i0 `mod` m
+    j = j0 `mod` n
 
 integerNthRoot :: Positive Int -> NonNegative Integer -> Bool
 integerNthRoot (Positive n) (NonNegative k) =
@@ -177,6 +192,7 @@ testUtil = do
     test ("Integer division by power is correct",integerDivPower)
     test ("Integer extended gcd is correct",integerEgcd)
     test ("Integer extended gcd agrees with built-in gcd",integerEgcdGcd)
+    test ("Integer Chinese remainder is correct",integerChineseRemainder)
     test ("Integer nth root is correct",integerNthRoot)
     test ("Integer closest nth root is correct",integerNthRootClosest)
     test ("Integer width is floor of log2 plus 1",integerLog2Floor)
@@ -372,6 +388,9 @@ data ZxPrimitive = ZxPrimitive Zx
 instance Arbitrary ZxPrimitive where
   arbitrary = fmap (ZxPrimitive . Zx.primitive) arbitrary
 
+zxDegree :: Zx -> Integer
+zxDegree = toInteger . Zx.degree
+
 zxFromCoeffValid :: [Integer] -> Bool
 zxFromCoeffValid = Zx.valid . Zx.fromCoeff
 
@@ -431,8 +450,8 @@ zxMultiplyTrailingCoeff (ZxNonZero f) (ZxNonZero g) =
 
 zxComposeEvaluate :: Zx -> Zx -> Integer -> Bool
 zxComposeEvaluate f g x =
-    (toInteger (Zx.degree f * Zx.degree g) > maxDegree) ||
-    (Zx.evaluate (Zx.compose f g) x == Zx.evaluate f (Zx.evaluate g x))
+    zxDegree f * zxDegree g > maxDegree ||
+    Zx.evaluate (Zx.compose f g) x == Zx.evaluate f (Zx.evaluate g x)
 
 zxDivision :: Zx -> Zx -> Bool
 zxDivision f g =
@@ -480,11 +499,12 @@ zxGcd f g =
 
 zxSquareFree :: ZxNonConstant -> ZxNonZero -> Bool
 zxSquareFree (ZxNonConstant f) (ZxNonZero g) =
-    not $ Zx.squareFree (Zx.multiply (Zx.square f) g)
+    (zxDegree f + zxDegree g > maxDegree `div` 2) ||
+    (not $ Zx.squareFree $ Zx.multiply (Zx.square f) g)
 
 zxSquareFreeDecomposition :: NonEmptyList ZxNonZero -> Bool
 zxSquareFreeDecomposition (NonEmpty fs0) =
-    (toInteger (sum (zipWith (*) (map Zx.degree fs) [1..])) > maxDegree) ||
+    (sum (zipWith (*) (map zxDegree fs) [1..]) > maxDegree `div` 2) ||
     (not (null hs) &&
      all Zx.squareFree hs &&
      Zx.squareFreeRecomposition hs == g)
@@ -495,6 +515,7 @@ zxSquareFreeDecomposition (NonEmpty fs0) =
 
 zxComposePlusMinusSqrt :: Zx -> NonNegative Integer -> Bool
 zxComposePlusMinusSqrt f (NonNegative a) =
+    zxDegree f > maxDegree `div` 2 ||
     Zx.composePlusMinusSqrt f (a * a) ==
     Zx.multiply
       (Zx.compose f (Zx.add Zx.variable (Zx.constant a)))
@@ -525,13 +546,16 @@ testZx = do
     test ("Z[x] decomposition into content and primitive part",zxContentPrimitive)
     test ("Z[x] product of primitive polynomials is primitive",zxGaussLemma)
     test ("Z[x] gcd divides both arguments",zxGcd)
-    testN 100 ("Z[x] square-free test has no false positives",zxSquareFree)
+    test ("Z[x] square-free test has no false positives",zxSquareFree)
     test ("Z[x] square-free decomposition is correct",zxSquareFreeDecomposition)
     test ("Z[x] compose with +/- sqrt is correct",zxComposePlusMinusSqrt)
 
 -------------------------------------------------------------------------------
 -- Testing the polynomial ring GF(p)[x]
 -------------------------------------------------------------------------------
+
+gfpxDegree :: Gfpx -> Integer
+gfpxDegree = toInteger . Gfpx.degree
 
 gfpxFromZxValid :: PrimePowerInteger -> Zx -> Bool
 gfpxFromZxValid (PrimePowerInteger p) = Gfpx.valid p . Gfpx.fromZx p
@@ -635,7 +659,7 @@ gfpxMultiplyPowerValid (PrimePowerInteger p) (NonNegative d) f0 =
 
 gfpxComposeEvaluate :: PrimePowerInteger -> Zx -> Zx -> Integer -> Bool
 gfpxComposeEvaluate (PrimePowerInteger p) f0 g0 x0 =
-    (toInteger (Gfpx.degree f * Gfpx.degree g) > maxDegree) ||
+    (gfpxDegree f * gfpxDegree g > maxDegree) ||
     (Gfpx.evaluate p (Gfpx.compose p f g) x ==
      Gfpx.evaluate p f (Gfpx.evaluate p g x))
   where
@@ -661,9 +685,23 @@ gfpxQuotientMultiply (PrimePowerInteger p) f0 g0 =
     f = Gfpx.fromZx p f0
     g = Gfpx.fromZx p g0
 
+gfpxEgcd :: PrimeInteger -> Zx -> Zx -> Bool
+gfpxEgcd (PrimeInteger p) f0 g0 =
+    Gfpx.divides p h f &&
+    Gfpx.divides p h g &&
+    Gfpx.add p (Gfpx.multiply p s f) (Gfpx.multiply p t g) == h &&
+    (Gfpx.isZero h || Gfpx.isMonic h) &&
+    Gfpx.degree t < max 1 (Gfpx.degree f) &&
+    Gfpx.degree s < max 1 (Gfpx.degree g)
+  where
+    (h,(s,t)) = Gfpx.egcd p f g
+    f = Gfpx.fromZx p f0
+    g = Gfpx.fromZx p g0
+
 gfpxMultiplyExpRemainder :: PrimePowerInteger -> Zx -> Zx -> Zx -> (NonNegative Integer) -> Bool
 gfpxMultiplyExpRemainder (PrimePowerInteger p) f0 g0 h0 (NonNegative k) =
-    (toInteger (Gfpx.degree f) + toInteger (Gfpx.degree g) * k > maxDegree) ||
+    (gfpxDegree f > maxDegree `div` 2) ||
+    (gfpxDegree g + gfpxDegree h * k > maxDegree) ||
     (not (coprime p (Gfpx.leadingCoeff f))) ||
     (Gfpx.multiplyExpRemainder p f g h k ==
      Gfpx.remainder p (Gfpx.multiplyExp p g h k) f)
@@ -672,16 +710,16 @@ gfpxMultiplyExpRemainder (PrimePowerInteger p) f0 g0 h0 (NonNegative k) =
     g = Gfpx.fromZx p g0
     h = Gfpx.fromZx p h0
 
-gfpxEgcd :: PrimeInteger -> Zx -> Zx -> Bool
-gfpxEgcd (PrimeInteger p) f0 g0 =
-    Gfpx.divides p h f &&
-    Gfpx.divides p h g &&
-    Gfpx.add p (Gfpx.multiply p s f) (Gfpx.multiply p t g) == h &&
-    (Gfpx.isZero h || Gfpx.isMonic h)
+gfpxInvertRemainder :: PrimeInteger -> ZxMonicNotOne -> Zx -> Bool
+gfpxInvertRemainder (PrimeInteger p) (ZxMonicNotOne f0) h0 =
+    Gfpx.isZero h ||
+    (case Gfpx.invertRemainderF p f h of
+       Left g -> Gfpx.properDivisor p g f
+       Right i -> Gfpx.isOne (Gfpx.multiplyRemainder p f h i) &&
+                  Gfpx.degree i < Gfpx.degree f)
   where
-    (h,(s,t)) = Gfpx.egcd p f g
     f = Gfpx.fromZx p f0
-    g = Gfpx.fromZx p g0
+    h = Gfpx.remainder p (Gfpx.fromZx p h0) f
 
 gfpxRoots :: PrimeInteger -> Zx -> Bool
 gfpxRoots (PrimeInteger p) f0 =
@@ -691,7 +729,7 @@ gfpxRoots (PrimeInteger p) f0 =
 
 gfpxIrreducible :: PrimeInteger -> ZxMonicNotOne -> ZxMonicNotOne -> Bool
 gfpxIrreducible (PrimeInteger p) (ZxMonicNotOne f0) (ZxMonicNotOne g0) =
-    toInteger (Gfpx.degree h) > maxDegree `div` 2 ||
+    gfpxDegree f + gfpxDegree g > maxDegree `div` 3 ||
     not (Gfpx.irreducible p h)
   where
     f = Gfpx.fromZx p f0
@@ -733,7 +771,7 @@ gfpxSquareFree (PrimeInteger p) f0 g0 =
 
 gfpxSquareFreeDecomposition :: PrimeInteger -> [Zx] -> Bool
 gfpxSquareFreeDecomposition (PrimeInteger p) fs0 =
-    (toInteger (sum (zipWith (*) (map Gfpx.degree fs) [1..])) > maxDegree) ||
+    (sum (zipWith (*) (map gfpxDegree fs) [1..]) > maxDegree) ||
     null fs ||
     (not (null hs) &&
      all (Gfpx.squareFree p) hs &&
@@ -745,7 +783,7 @@ gfpxSquareFreeDecomposition (PrimeInteger p) fs0 =
 
 gfpxSplitBerlekamp :: PrimeInteger -> ZxMonic -> Bool
 gfpxSplitBerlekamp (PrimeInteger p) (ZxMonic f0) =
-    (toInteger (Gfpx.degree f) > maxDegree `div` 2) ||
+    (gfpxDegree f > maxDegree `div` 3) ||
     (case Gfpx.splitBerlekamp p f of
         Nothing -> Gfpx.irreducible p f
         Just (g,h) ->
@@ -758,7 +796,7 @@ gfpxSplitBerlekamp (PrimeInteger p) (ZxMonic f0) =
 
 gfpxFactorMonicBerlekamp :: PrimeInteger -> [ZxMonic] -> Bool
 gfpxFactorMonicBerlekamp (PrimeInteger p) fs0 =
-    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 2) ||
+    (sum (map gfpxDegree fs) > maxDegree `div` 2) ||
     (all ((\k -> 0 < k) . snd) gks &&
      all (not . Gfpx.isConstant . fst) gks &&
      all (Gfpx.isMonic . fst) gks &&
@@ -771,7 +809,7 @@ gfpxFactorMonicBerlekamp (PrimeInteger p) fs0 =
 
 gfpxFactorMonic :: PrimeInteger -> [ZxMonic] -> StdGen -> Bool
 gfpxFactorMonic (PrimeInteger p) fs0 r =
-    (toInteger (sum (map Gfpx.degree fs)) > maxDegree `div` 2) ||
+    (sum (map gfpxDegree fs) > maxDegree `div` 2) ||
     (all ((\k -> 0 < k) . snd) gks &&
      all (not . Gfpx.isConstant . fst) gks &&
      all (Gfpx.isMonic . fst) gks &&
@@ -801,8 +839,9 @@ testGfpx = do
     test ("GF(p)[x] composition evaluation",gfpxComposeEvaluate)
     test ("GF(p)[x] division satisfies f == q*g + r",gfpxDivision)
     test ("GF(p)[x] quotient satisfies (f*g) / f == g",gfpxQuotientMultiply)
-    test ("GF(p)[x] modular exponentiation is correct",gfpxMultiplyExpRemainder)
     test ("GF(p)[x] extended gcd is correct",gfpxEgcd)
+    test ("GF(p)[x] modular exponentiation is correct",gfpxMultiplyExpRemainder)
+    test ("GF(p)[x] modular inverse is correct",gfpxInvertRemainder)
     test ("GF(p)[x] root finding is correct",gfpxRoots)
     test ("GF(p)[x] irreducibility test is correct",gfpxIrreducible)
     test ("GF(p)[x] Frobenius endomorphism returns valid data structure",gfpxFrobeniusValid)
@@ -837,6 +876,9 @@ instance Arbitrary EcPrimeInteger where
   arbitrary = do
     Positive i <- arbitrary
     return $ EcPrimeInteger (Prime.list !! (i + 1))
+
+ecTraceOfFrobenius :: Ec.Curve -> Integer
+ecTraceOfFrobenius e = Ec.kCurve e + 1 - toInteger (length (Ec.points e))
 
 ecUniformCurve :: EcInteger -> StdGen -> Bool
 ecUniformCurve (EcInteger k) r =
@@ -899,17 +941,80 @@ ecAddAssoc (EcPrimeInteger k) r0 =
     (p2,r2) = Ec.uniformPoint e r1
     (p3,_) = Ec.uniformPoint e r2
 
-ecMultiplyOrder :: EcPrimeInteger -> StdGen -> Bool
-ecMultiplyOrder (EcPrimeInteger k) r =
-    Ec.multiply e p (Ec.order e) == Ec.Infinity
+ecPsiDivisionPolynomialDegree :: EcPrimeInteger -> Positive Int -> StdGen -> Bool
+ecPsiDivisionPolynomialDegree (EcPrimeInteger k) (Positive n) r =
+    (toInteger b > maxDegree) ||
+    (if divides k (toInteger n) then d < b else d == b)
+  where
+    ((e,_),_) = Ec.uniformCurve k r
+    p = Ec.psiDivisionPolynomials e !! n
+    d = Gfpx.degree p
+    b = (n * n - (if odd n then 1 else 4)) `div` 2
+
+ecDivisionPolynomialMultiply :: EcPrimeInteger -> Integer -> StdGen -> Bool
+ecDivisionPolynomialMultiply (EcPrimeInteger k) n r =
+    abs n > 15 ||
+    (if n < 0 then Ec.negate e np else np) == Ec.multiply e p n
   where
     ((e,p),_) = Ec.uniformCurve k r
 
-ecTraceOfFrobeniusMod2 :: EcPrimeInteger -> StdGen -> Bool
-ecTraceOfFrobeniusMod2 (EcPrimeInteger k) r =
-    even (Ec.traceOfFrobenius e) == odd (length (Gfpx.roots k (Ec.rhs e)))
+    np = if psi == 0 then Ec.Infinity else Ec.Point npx npy
+    npx = Prime.divide k phi (Prime.square k psi)
+    npy = Prime.divide k omega (Prime.cube k psi)
+
+    psi = (if even n then mult_2y else id) (eval_x psi_n)
+    phi = eval_x phi_n
+    omega = (if odd n then mult_y else id) (eval_x omega_n)
+
+    eval_x f = Gfpx.evaluate k f x
+    mult_y = Prime.multiply k y
+    mult_2y = Prime.multiply k (mult_y (Prime.fromInteger k 2))
+
+    (x,y) = case p of
+              Ec.Infinity -> error "random point is infinity"
+              Ec.Point {Ec.xPoint = px, Ec.yPoint = py} -> (px,py)
+
+    Ec.DivisionPolynomial
+        {Ec.psiDivisionPolynomial = psi_n,
+         Ec.phiDivisionPolynomial = phi_n,
+         Ec.omegaDivisionPolynomial = omega_n} =
+      Ec.divisionPolynomials e !! fromInteger (abs n)
+
+ecTraceOfFrobeniusBound :: EcPrimeInteger -> StdGen -> Bool
+ecTraceOfFrobeniusBound (EcPrimeInteger k) r =
+    abs t <= nthRoot 2 (4 * k)
   where
     ((e,_),_) = Ec.uniformCurve k r
+    t = ecTraceOfFrobenius e
+
+ecTraceOfFrobeniusMod2 :: EcPrimeInteger -> StdGen -> Bool
+ecTraceOfFrobeniusMod2 (EcPrimeInteger k) r =
+    Ec.traceOfFrobeniusMod2 e == ecTraceOfFrobenius e `mod` 2
+  where
+    ((e,_),_) = Ec.uniformCurve k r
+
+ecTraceOfFrobeniusModOddPrime :: EcPrimeInteger -> OddPrimeInteger -> StdGen -> Bool
+ecTraceOfFrobeniusModOddPrime (EcPrimeInteger k) (OddPrimeInteger l) r =
+    (k > 50 || l > 15) ||
+    l == k ||
+    Ec.traceOfFrobeniusModOddPrime e l h == ecTraceOfFrobenius e `mod` l
+  where
+    ((e,_),_) = Ec.uniformCurve k r
+    h = Ec.psiDivisionPolynomials e !! fromInteger l
+
+ecTraceOfFrobeniusSchoof :: EcPrimeInteger -> StdGen -> Bool
+ecTraceOfFrobeniusSchoof (EcPrimeInteger k) r =
+    k > 50 ||
+    Ec.traceOfFrobenius e == ecTraceOfFrobenius e
+  where
+    ((e,_),_) = Ec.uniformCurve k r
+
+ecMultiplyOrder :: EcPrimeInteger -> StdGen -> Bool
+ecMultiplyOrder (EcPrimeInteger k) r =
+    k > 50 ||
+    Ec.multiply e p (Ec.order e) == Ec.Infinity
+  where
+    ((e,p),_) = Ec.uniformCurve k r
 
 testEc :: IO ()
 testEc = do
@@ -921,8 +1026,13 @@ testEc = do
     test ("EC add point to its negation is the identity",ecAddNegate)
     test ("EC add point is commutative",ecAddComm)
     test ("EC add point is associative",ecAddAssoc)
-    test ("EC multiply point by group order is the identity",ecMultiplyOrder)
+    test ("EC psi division polynomial degree",ecPsiDivisionPolynomialDegree)
+    test ("EC division polynomial multiplication",ecDivisionPolynomialMultiply)
+    test ("EC trace of Frobenius bound (Hasse's theorem)",ecTraceOfFrobeniusBound)
     test ("EC trace of Frobenius mod 2",ecTraceOfFrobeniusMod2)
+    test ("EC trace of Frobenius mod odd prime",ecTraceOfFrobeniusModOddPrime)
+    test ("EC trace of Frobenius is correct",ecTraceOfFrobeniusSchoof)
+    test ("EC multiply point by group order is the identity",ecMultiplyOrder)
 
 -------------------------------------------------------------------------------
 -- Testing the Berlekamp-Zassenhaus algorithm
@@ -1084,15 +1194,6 @@ instance Arbitrary NfsMatrix where
     m <- vectorOf r (vector c)
     return $ NfsMatrix m
 
-nfsIrreduciblePolynomial :: ZxMonicNotOne -> ZxMonicNotOne -> Bool
-nfsIrreduciblePolynomial (ZxMonicNotOne f) (ZxMonicNotOne g) =
-    toInteger (Zx.degree h) > maxDegree `div` 5 ||
-    (case Nfs.irreduciblePolynomial h of
-       Nothing -> True
-       Just _ -> False)
-  where
-    h = Zx.multiply f g
-
 nfsSelectPolynomialBase :: PolynomialConfig -> NfsInteger -> Bool
 nfsSelectPolynomialBase cfg (NfsInteger n) =
     Zx.isMonic f &&
@@ -1122,7 +1223,6 @@ nfsGaussianElimination (NfsMatrix m) =
 
 testNfs :: IO ()
 testNfs = do
-    testN 100 ("NFS polynomial irreducibility has no false positives",nfsIrreduciblePolynomial)
     test ("NFS base m polynomial selection is correct",nfsSelectPolynomialBase)
     test ("NFS smooth integer test excludes zero",nfsSmoothIntegerNonZero)
     test ("NFS Gaussian elimination is correct",nfsGaussianElimination)
