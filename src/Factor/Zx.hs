@@ -13,8 +13,10 @@ where
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
-import Factor.Util
 import qualified Factor.Prime as Prime
+import Factor.Term (Term(..))
+import qualified Factor.Term as Term
+import Factor.Util
 
 -------------------------------------------------------------------------------
 -- Monomials in Z[x]
@@ -47,6 +49,10 @@ constantMonomial n = Monomial {degreeMonomial = 0, coeffMonomial = n}
 negateMonomial :: Monomial -> Monomial
 negateMonomial m = m {coeffMonomial = Prelude.negate (coeffMonomial m)}
 
+toTermMonomial :: Monomial -> Term
+toTermMonomial (Monomial {degreeMonomial = d, coeffMonomial = n}) =
+    MultiplyTerm (IntegerTerm n) (ExpTerm VarTerm (IntegerTerm (toInteger d)))
+
 -------------------------------------------------------------------------------
 -- The polynomial ring Z[x]
 -------------------------------------------------------------------------------
@@ -58,13 +64,7 @@ data Zx =
   deriving (Eq,Ord)
 
 instance Show Zx where
-  show f = -- show (toCoeff f) -- for debugging
-      case reverse (toMonomials f) of
-        [] -> "0"
-        m : ms -> concat (show m : map showMonomial ms)
-    where
-      showMonomial m | coeffMonomial m < 0 = " - " ++ show (negateMonomial m)
-      showMonomial m | otherwise = " + " ++ show m
+  show = Term.toString . Term.zxSimplify . Term.nnf . toTerm
 
 valid :: Zx -> Bool
 valid f =
@@ -168,6 +168,9 @@ fromCoeff = Factor.Zx.sum . zipWith monomial [0..]
 
 toCoeff :: Zx -> [Integer]
 toCoeff f = map (powerCoeff f) [0 .. degree f]
+
+toTerm :: Zx -> Term
+toTerm = Term.mkSum . map toTermMonomial . reverse . toMonomials
 
 -------------------------------------------------------------------------------
 -- Ring operations
@@ -418,7 +421,7 @@ composePlusMinusSqrt = go
     mon (n,c) = monomial n (2 * c)
 
 swinnertonDyer :: [Zx]
-swinnertonDyer = go variable Prime.list
+swinnertonDyer = go variable Prime.primes
   where
     go f ps = g : go g (tail ps)
       where g = composePlusMinusSqrt f (head ps)

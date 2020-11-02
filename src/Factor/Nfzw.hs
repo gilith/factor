@@ -112,10 +112,8 @@ norm f (Nfzw a b) =
 type Ideal = (Gfp,Prime)
 
 ideals :: Zx -> [Ideal]
-ideals f =
-    concatMap roots Prime.list
-  where
-    roots p = map (\r -> (r,p)) $ Gfpx.roots p (Gfpx.fromZx p f)
+ideals f = concatMap roots Prime.primes
+  where roots p = map (\r -> (r,p)) $ Gfpx.roots p (Gfpx.fromZx p f)
 
 inIdeal :: Nfzw -> Ideal -> Bool
 inIdeal (Nfzw a b) (r,p) =

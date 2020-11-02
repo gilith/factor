@@ -11,6 +11,7 @@ module Main
   ( main )
 where
 
+import Control.Monad (liftM,liftM2)
 import System.Random (StdGen)
 import qualified System.Random as Random
 import Test.QuickCheck
@@ -27,6 +28,8 @@ import qualified Factor.Nfs as Nfs
 import Factor.Nfzw (Nfzw(..))
 import qualified Factor.Nfzw as Nfzw
 import qualified Factor.Prime as Prime
+import Factor.Term (Term(..))
+import qualified Factor.Term as Term
 import Factor.Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
@@ -149,6 +152,10 @@ integerNthRootClosest (Positive n) (NonNegative k) =
   where
     p = nthRootClosest n k
 
+integerUniform :: NonNegative Int -> StdGen -> Bool
+integerUniform (NonNegative w) r =
+    widthInteger (fst (uniformInteger w r)) == w
+
 integerLog2Floor :: Positive Integer -> Bool
 integerLog2Floor (Positive n) =
     floor (log2Integer n) == widthInteger n - 1
@@ -157,14 +164,13 @@ integerJacobiSymbolZero :: Integer -> PositiveOddInteger -> Bool
 integerJacobiSymbolZero m (PositiveOddInteger n) =
     (jacobiSymbol m n == ZeroResidue) == not (coprime m n)
 
-integerJacobiSymbolPrime :: Integer -> Positive Int -> Bool
-integerJacobiSymbolPrime m (Positive p0) =
+integerJacobiSymbolPrime :: Integer -> OddPrimeInteger -> Bool
+integerJacobiSymbolPrime m (OddPrimeInteger p) =
     case jacobiSymbol m p of
       ZeroResidue -> True
       Residue -> res
       NonResidue -> not res
   where
-    p = Prime.list !! p0  -- Odd prime
     res = any (\i -> Prime.square p i == Prime.fromInteger p m) [1..(p-1)]
 
 integerJacobiSymbolSquare :: Integer -> PositiveOddInteger -> Bool
@@ -195,12 +201,55 @@ testUtil = do
     test ("Integer Chinese remainder is correct",integerChineseRemainder)
     test ("Integer nth root is correct",integerNthRoot)
     test ("Integer closest nth root is correct",integerNthRootClosest)
+    test ("Integer random selection has correct width",integerUniform)
     test ("Integer width is floor of log2 plus 1",integerLog2Floor)
     test ("Integer Jacobi symbol is zero iff not coprime",integerJacobiSymbolZero)
     test ("Integer Jacobi symbol for primes calculates residues",integerJacobiSymbolPrime)
     test ("Integer Jacobi symbol for squares is residue (or zero)",integerJacobiSymbolSquare)
     test ("Integer Jacobi symbol is multiplicative on numerators",integerJacobiSymbolMultiplicativeNumerator)
     test ("Integer Jacobi symbol is multiplicative on denominators",integerJacobiSymbolMultiplicativeDenominator)
+
+-------------------------------------------------------------------------------
+-- Testing the parsing and pretty-printing of expression terms
+-------------------------------------------------------------------------------
+
+instance Arbitrary Term where
+  arbitrary = sized gen
+    where
+      gen 0 = oneof leaves
+      gen n = oneof
+                (leaves ++
+                 [gen1 NegateTerm] ++
+                 map gen2 [AddTerm,SubtractTerm,MultiplyTerm,ExpTerm,ModTerm])
+        where
+          gen1 c = liftM c subterm
+          gen2 c = liftM2 c subterm subterm
+          subterm = gen (n `div` 2)
+
+      leaves = [liftM IntegerTerm arbitrary,
+                widthTm NumberTerm,
+                widthTm PrimeTerm,
+                widthTm CompositeTerm,
+                return VarTerm]
+
+      widthTm c = do
+        NonNegative i <- arbitrary
+        return $ c i
+
+  shrink tm = concatMap shrink stms ++ stms where stms = Term.subterms tm
+
+termPrintParse :: Term -> Bool
+termPrintParse tm0 = Term.fromString (Term.toString tm) == Just tm
+  where tm = Term.nnfInteger tm0
+
+termNnfIdempotent :: Term -> Bool
+termNnfIdempotent tm = Term.nnf tm' == tm'
+  where tm' = Term.nnf tm
+
+testTerm :: IO ()
+testTerm = do
+    test ("Term pretty printing then parsing is the identity",termPrintParse)
+    test ("Term negation normal form is idempotent",termNnfIdempotent)
 
 -------------------------------------------------------------------------------
 -- Testing Gaussian integers
@@ -257,7 +306,7 @@ data PrimeInteger = PrimeInteger Integer
 instance Arbitrary PrimeInteger where
   arbitrary = do
     NonNegative i <- arbitrary
-    return $ PrimeInteger (Prime.list !! i)
+    return $ PrimeInteger (Prime.primes !! i)
 
 data OddPrimeInteger = OddPrimeInteger Integer
   deriving (Eq,Ord,Show)
@@ -265,7 +314,7 @@ data OddPrimeInteger = OddPrimeInteger Integer
 instance Arbitrary OddPrimeInteger where
   arbitrary = do
     Positive i <- arbitrary
-    return $ OddPrimeInteger (Prime.list !! i)
+    return $ OddPrimeInteger (Prime.primes !! i)
 
 data PrimePowerInteger = PrimePowerInteger Integer
   deriving (Eq,Ord,Show)
@@ -278,15 +327,15 @@ instance Arbitrary PrimePowerInteger where
 
 primeMonotonic :: NonNegative Int -> Bool
 primeMonotonic (NonNegative i) =
-    if i == 0 then p == 2 else (Prime.list !! (i-1)) < p
+    if i == 0 then p == 2 else (Prime.primes !! (i-1)) < p
   where
-    p = Prime.list !! i
+    p = Prime.primes !! i
 
 primeIndivisible :: NonNegative Int -> Bool
 primeIndivisible (NonNegative i) =
-    all (\q -> not (divides q p)) (take i Prime.list)
+    all (\q -> not (divides q p)) (take i Prime.primes)
   where
-    p = Prime.list !! i
+    p = Prime.primes !! i
 
 primeFactor :: [NonNegative Int] -> Integer -> Bool
 primeFactor il n =
@@ -294,7 +343,7 @@ primeFactor il n =
   where
     m = foldr (\(p,k) z -> p^k * z) s pks
     (pks,s) = Prime.factor ps n
-    (ps,_) = foldr nextP ([],Prime.list) il
+    (ps,_) = foldr nextP ([],Prime.primes) il
     nextP (NonNegative i) (x,y) = let z = drop i y in (head z : x, tail z)
 
 primeTrialDivision :: Integer -> Bool
@@ -323,6 +372,11 @@ primeInvert (PrimePowerInteger p) n =
     x = Prime.fromInteger p n
     y = Prime.invert p x
 
+primeIsPrime :: Integer -> StdGen -> Bool
+primeIsPrime n r =
+    fst (Prime.isPrime n r) ==
+    (head (dropWhile (\p -> p < n) Prime.primes) == n)
+
 primeSqrt :: PrimeInteger -> Integer -> Bool
 primeSqrt (PrimeInteger p) n =
     y <= Prime.negate p y &&
@@ -339,6 +393,7 @@ testPrime = do
     test ("Prime trial division factors all integers",primeTrialDivision)
     test ("Prime exponentiation satisfies Fermat's little theorem",primeFermat)
     test ("Prime inverse is correct",primeInvert)
+    test ("Prime test is correct",primeIsPrime)
     test ("Prime square root is correct",primeSqrt)
 
 -------------------------------------------------------------------------------
@@ -875,7 +930,7 @@ data EcPrimeInteger = EcPrimeInteger Integer
 instance Arbitrary EcPrimeInteger where
   arbitrary = do
     Positive i <- arbitrary
-    return $ EcPrimeInteger (Prime.list !! (i + 1))
+    return $ EcPrimeInteger (Prime.primes !! (i + 1))
 
 ecTraceOfFrobenius :: Ec.Curve -> Integer
 ecTraceOfFrobenius e = Ec.kCurve e + 1 - toInteger (length (Ec.points e))
@@ -1181,7 +1236,7 @@ data NfsFactorBase = NfsFactorBase FactorBase
 instance Arbitrary NfsFactorBase where
   arbitrary = do
     NonNegative n <- arbitrary
-    return $ NfsFactorBase (take n Prime.list)
+    return $ NfsFactorBase (take n Prime.primes)
 
 data NfsMatrix = NfsMatrix [Row]
   deriving (Eq,Ord,Show)
@@ -1234,6 +1289,7 @@ testNfs = do
 main :: IO ()
 main = do
     testUtil
+    testTerm
     testGaussian
     testPrime
     testZx

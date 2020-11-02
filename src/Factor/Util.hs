@@ -14,6 +14,8 @@ where
 import qualified Data.Bits as Bits
 import qualified Data.List as List
 import Data.Maybe (isJust)
+import System.Random (RandomGen)
+import qualified System.Random as Random
 
 -------------------------------------------------------------------------------
 -- Factoring monad
@@ -147,8 +149,22 @@ bitsInteger :: Integer -> [Bool]
 bitsInteger = map odd . takeWhile ((/=) 0) . iterate (flip Bits.shiftR 1)
 
 widthInteger :: Integer -> Int
-widthInteger n | n < 0 = error "bitwidth only defined for nonnegative integers"
+widthInteger n | n < 0 = error "width only defined for nonnegative integers"
 widthInteger n | otherwise = length $ bitsInteger n
+
+uniformInteger :: RandomGen r => Int -> r -> (Integer,r)
+uniformInteger w | w < 0 = error $ "no integers with width " ++ show w
+uniformInteger 0 = (,) 0
+uniformInteger w = gen (w - 1) 1
+  where
+    gen 0 n r = (n,r)
+    gen i n r = gen (i - 1) (2 * n + (if b then 1 else 0)) r'
+      where (b,r') = Random.random r
+
+uniformOddInteger :: RandomGen r => Int -> r -> (Integer,r)
+uniformOddInteger w _ | w < 1 = error $ "no odd integers with width " ++ show w
+uniformOddInteger w r = (2*n + 1, r')
+  where (n,r') = uniformInteger (w - 1) r
 
 -------------------------------------------------------------------------------
 -- Integer log

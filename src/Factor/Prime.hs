@@ -26,16 +26,16 @@ import Factor.Util
 
 type Prime = Integer
 
-list :: [Prime]
-list = 2 : 3 : sieve 5 ((9,6),Set.empty)
+primes :: [Prime]
+primes = 2 : 3 : sieve 5 ((9,6),Set.empty)
   where
     sieve n ((kp,p),s) =
       case compare n kp of
         LT -> n : sieve (n+2) ((kp,p), Set.insert (n*n,2*n) s)
-        EQ -> sieve (n+2) (next kp p s)
-        GT -> sieve n (next kp p s)
+        EQ -> sieve (n+2) (advance kp p s)
+        GT -> sieve n (advance kp p s)
 
-    next kp p s = Set.deleteFindMin (Set.insert (kp + p, p) s)
+    advance kp p s = Set.deleteFindMin (Set.insert (kp + p, p) s)
 
 -------------------------------------------------------------------------------
 -- Trial division
@@ -79,7 +79,7 @@ factorProduct ps nl = (productPrimePowers pksl, sl)
   where (pksl,sl) = unzip $ map (factor ps) nl
 
 trialDivision :: Integer -> ([PrimePower],Integer)
-trialDivision = factor list
+trialDivision = factor primes
 
 -------------------------------------------------------------------------------
 -- The field GF(p) of arithmetic modulo a prime
@@ -172,6 +172,59 @@ uniform p = Random.randomR (0, p - 1)
 
 uniformNonZero :: RandomGen r => Prime -> r -> (Gfp,r)
 uniformNonZero p = Random.randomR (1, p - 1)
+
+-------------------------------------------------------------------------------
+-- Testing for primality using the Miller-Rabin probabilistic primality test
+-------------------------------------------------------------------------------
+
+millerRabinTrials :: Int
+millerRabinTrials = 100  -- False positive every 2^200 tests (or so)
+
+isPrime :: RandomGen r => Integer -> r -> (Bool,r)
+isPrime n | n <= 3 = (,) (2 <= n)
+isPrime n | even n = (,) False
+isPrime n = trials millerRabinTrials
+  where
+    trials 0 r = (True,r)
+    trials t r = if trial a then trials (t - 1) r' else (False,r')
+      where (a,r') = Random.randomR (2, n - 1) r
+
+    trial a = not $ witness (Factor.Prime.exp n a m) k
+
+    witness x 0 = x /= 1
+    witness x i = if x2 == 1 then x /= 1 && x /= n1 else witness x2 (i - 1)
+      where x2 = square n x
+
+    (k,m) = divPower 2 n1
+    n1 = n - 1
+
+nextPrime :: RandomGen r => Integer -> r -> (Prime,r)
+nextPrime n r = if b then (n,r') else nextPrime (n + 1) r'
+  where (b,r') = isPrime n r
+
+previousPrime :: RandomGen r => Integer -> r -> (Prime,r)
+previousPrime n _ | n < 2 = error "no previous prime"
+previousPrime n r = if b then (n,r') else previousPrime (n - 1) r'
+  where (b,r') = isPrime n r
+
+uniformPrime :: RandomGen r => Int -> r -> (Prime,r)
+uniformPrime w | w < 2 = error $ "no primes with width " ++ show w
+uniformPrime 2 = uniformInteger 2
+uniformPrime w = pick
+  where
+    pick r = if b then (n,r'') else pick r''
+      where
+        (n,r') = uniformOddInteger w r
+        (b,r'') = isPrime n r'
+
+uniformComposite :: RandomGen r => Int -> r -> (Integer,r)
+uniformComposite w | w < 3 = error $ "no composites with width " ++ show w
+uniformComposite w = pick
+  where
+    pick r = if b then pick r'' else (n,r'')
+      where
+        (n,r') = uniformInteger w r
+        (b,r'') = isPrime n r'
 
 -------------------------------------------------------------------------------
 -- Square roots in GF(p) using the Tonelli-Shanks algorithm

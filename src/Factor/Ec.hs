@@ -258,7 +258,7 @@ factorPrimes (q : qs) eps =
       Right eps' -> factorPrimes qs eps'
 
 factor :: RandomGen r => Config -> Integer -> r -> (Maybe Integer, r)
-factor cfg k r = (factorPrimes Prime.list eps, r')
+factor cfg k r = (factorPrimes Prime.primes eps, r')
   where
     (eps,r') = unfoldrN (uniformCurve k) n r
     n = evalCurvesConfig (curvesConfig cfg) k
@@ -492,7 +492,7 @@ traceOfFrobeniusModOddPrime e l = go
     k = kCurve e
 
 traceOfFrobenius :: Curve -> Integer
-traceOfFrobenius e = go (traceOfFrobeniusMod2 e, 2) (tail Prime.list)
+traceOfFrobenius e = go (traceOfFrobeniusMod2 e, 2) (tail Prime.primes)
   where
     go (t,m) _ | b <= m = Prime.toSmallestInteger m t
     go _ [] = error "ran out of primes"

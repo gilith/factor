@@ -310,7 +310,7 @@ algebraicSquareRoot n f m f' sq =
     List.transpose $
     map liftSqrt rcs
   where
-    (p,rcs) = head $ mapMaybe splits (tail Prime.list)
+    (p,rcs) = head $ mapMaybe splits (tail Prime.primes)
 
     evalSquare pk x = Prime.product pk (fx2' : sqx)
       where
@@ -387,7 +387,7 @@ factor cfg n = do
       (1,[(_,1)]) -> putStrLn "Verified that f is irreducible in Z[x]"
       _ -> error "f is reduciblein Z[x] (use this fact to factor n)"
     let rfm = maxFactorBase (rationalFactorBaseConfig cfg) n
-    let rfb = takeWhile ((>=) rfm) Prime.list
+    let rfb = takeWhile ((>=) rfm) Prime.primes
     putStrLn $ "Rational factor base contains " ++ show (length rfb) ++
                " prime integers:" ++ abbrevList "primes" (map show rfb)
     let afm = maxFactorBase (algebraicFactorBaseConfig cfg) n

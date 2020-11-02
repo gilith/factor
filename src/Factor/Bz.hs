@@ -43,7 +43,7 @@ monicGfpx :: Prime -> Zx -> Gfpx
 monicGfpx p = snd . Gfpx.constMonic p . Gfpx.fromZx p
 
 suitablePrime :: Zx -> Prime
-suitablePrime f = head $ filter suitable Prime.list
+suitablePrime f = head $ filter suitable Prime.primes
   where
     suitable p = not (divides p c) && Gfpx.squareFree p (monicGfpx p f)
     c = Zx.leadingCoeff f
