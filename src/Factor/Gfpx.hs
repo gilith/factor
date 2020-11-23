@@ -17,6 +17,8 @@ import System.Random (RandomGen)
 
 import Factor.Prime (Gfp,Prime)
 import qualified Factor.Prime as Prime
+import Factor.Term (Term(..),Var)
+import qualified Factor.Term as Term
 import Factor.Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
@@ -146,6 +148,12 @@ uniform :: RandomGen r => Prime -> Int -> r -> (Gfpx,r)
 uniform _ d r | d < 0 = (zero,r)
 uniform p d r = (fromCoeff l, r')
   where (l,r') = unfoldrN (Prime.uniform p) (d + 1) r
+
+polyToTerm :: Prime -> Var -> Gfpx -> Term
+polyToTerm p v f = Zx.toTerm v (toSmallestZx p f)
+
+toTerm :: Prime -> Var -> Gfpx -> Term
+toTerm p v f = Term.modulo (polyToTerm p v f) p
 
 -------------------------------------------------------------------------------
 -- Ring operations

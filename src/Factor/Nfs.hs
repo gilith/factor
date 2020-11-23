@@ -72,8 +72,8 @@ selectPolynomialDegree OptimalPolynomialDegree n =
 
 selectPolynomialBase :: PolynomialBase -> Integer -> Int -> Integer
 selectPolynomialBase (FixedPolynomialBase m) _ _ = m
-selectPolynomialBase ClosestPolynomialBase n d = nthRootClosest d n
-selectPolynomialBase FloorPolynomialBase n d = nthRoot d n
+selectPolynomialBase ClosestPolynomialBase n d = nthRootClosest (toInteger d) n
+selectPolynomialBase FloorPolynomialBase n d = nthRoot (toInteger d) n
 
 selectPolynomialCoeff :: PolynomialCoeff -> Integer -> Int -> Integer -> [Integer]
 selectPolynomialCoeff (FixedPolynomialCoeff c) _ _ _ = c
@@ -253,7 +253,7 @@ algebraicRow f aps qcs x =
   where
     (iks,_) = Nfzw.factor f aps x
 
-oddPower :: Eq a => [(a,Int)] -> a -> ([(a,Int)],Bool)
+oddPower :: Eq a => [(a,Integer)] -> a -> ([(a,Integer)],Bool)
 oddPower ((p,k) : pks) q | p == q = (pks, odd k)
 oddPower pks _ = (pks,False)
 
@@ -362,7 +362,8 @@ data Config =
        rationalFactorBaseConfig :: FactorBaseConfig,
        algebraicFactorBaseConfig :: FactorBaseConfig,
        quadraticCharacterConfig :: Int,
-       extraRankConfig :: Int}
+       extraRankConfig :: Int,
+       verboseConfig :: Bool}
   deriving (Eq,Ord,Show)
 
 defaultConfig :: Config
@@ -372,79 +373,89 @@ defaultConfig =
        rationalFactorBaseConfig = OptimalFactorBase 3.0,
        algebraicFactorBaseConfig = OptimalFactorBase 10.0,
        quadraticCharacterConfig = 20,
-       extraRankConfig = 5}
+       extraRankConfig = 5,
+       verboseConfig = False}
 
-factor :: Config -> Integer -> IO (Maybe Integer)
-factor cfg n = do
-    putStrLn $ "NFS configuration = " ++ show cfg
-    putStrLn $ "Attempting to factor " ++ show (widthInteger n) ++
-               " bit integer n = " ++ show n
-    let (f,m) = selectPolynomial (polynomialConfig cfg) n
-    putStrLn $ "Working in Z[w] where w is a complex root of f and f(m) = n"
-    putStrLn $ "  where f = " ++ show f
-    putStrLn $ "  and m = " ++ show m
-    case Bz.factor f of
-      (1,[(_,1)]) -> putStrLn "Verified that f is irreducible in Z[x]"
-      _ -> error "f is reduciblein Z[x] (use this fact to factor n)"
-    let rfm = maxFactorBase (rationalFactorBaseConfig cfg) n
-    let rfb = takeWhile ((>=) rfm) Prime.primes
-    putStrLn $ "Rational factor base contains " ++ show (length rfb) ++
-               " prime integers:" ++ abbrevList "primes" (map show rfb)
-    let afm = maxFactorBase (algebraicFactorBaseConfig cfg) n
-    let (ail,qil) = span ((>=) afm . snd) (Nfzw.ideals f)
-    let afb = map head $ List.group $ map snd ail
-    putStrLn $ "Algebraic factor base contains " ++ show (length ail) ++
-               " first degree prime ideals:" ++
-               abbrevList "prime ideals" (map show ail)
-    let qcs = quadraticCharacterConfig cfg
-    let extra = extraRankConfig cfg
-    let cols = 1 + length rfb + length ail + qcs
-    let xs = take (cols + extra) (smoothNfzw f m rfb afb)
-    putStrLn $ "Searching for 1+" ++
-               show (length rfb) ++ "+" ++
-               show (length ail) ++ "+" ++
-               show qcs ++ "+" ++
-               show extra ++ " = " ++
-               show (cols + extra) ++ " smooth elements of Z[w]:" ++
-               abbrevList "smooth elements" (map (\x -> show x ++ " |-> (" ++ show (rationalNorm m x) ++ ", " ++ show (algebraicNorm f x) ++ ")") xs)
-    let f' = Zx.derivative f
-    putStrLn $ "Derivative of f is f' = " ++ show f'
-    let qcl = take qcs (quadraticCharacters f' xs qil)
-    putStrLn $ "Generated " ++ show qcs ++ " quadratic characters " ++
-               "nonzero for f' and all smooth elements:" ++
-               abbrevList "quadratic characters" (map show qcl)
-    let rows = map (formRow f m rfb ail qcl) xs
-    let sql = map (map (\i -> xs !! i)) (gaussianElimination rows)
-    putStrLn $ "Gaussian elimination resulted in " ++ show (length sql) ++
-               " square products"
+verboseList :: Config -> String -> [String] -> String
+verboseList cfg s = if verboseConfig cfg then unabbrevList else abbrevList s
+
+factorWithPolynomial ::
+    Config -> Integer -> Zx -> Integer -> Verbose (Maybe Integer)
+factorWithPolynomial cfg n f m = do
+    rfm <- pure $ maxFactorBase (rationalFactorBaseConfig cfg) n
+    rfb <- pure $ takeWhile ((>=) rfm) Prime.primes
+    comment $ "Rational factor base contains " ++ show (length rfb) ++
+              " prime integers:" ++ verboseList cfg "primes" (map show rfb)
+    afm <- pure $ maxFactorBase (algebraicFactorBaseConfig cfg) n
+    (ail,qil) <- pure $ span ((>=) afm . snd) (Nfzw.ideals f)
+    afb <- pure $ map head $ List.group $ map snd ail
+    comment $ "Algebraic factor base contains " ++ show (length ail) ++
+              " first degree prime ideals:\n" ++
+              "  (r,p) such that f(r) = 0 (mod p)" ++
+              verboseList cfg "prime ideals" (map show ail)
+    qcs <- pure $ quadraticCharacterConfig cfg
+    extra <- pure $ extraRankConfig cfg
+    cols <- pure $ 1 + length rfb + length ail + qcs
+    xs <- pure $ take (cols + extra) (smoothNfzw f m rfb afb)
+    comment $ "Searching for 1+" ++
+              show (length rfb) ++ "+" ++
+              show (length ail) ++ "+" ++
+              show qcs ++ "+" ++
+              show extra ++ " = " ++
+              show (cols + extra) ++ " smooth elements of Z[w]:\n" ++
+              "  a + bw |-> (a + bm, (-b)^degree(f) * f(a/(-b)))" ++
+              verboseList cfg "smooth elements"
+                (map (\x -> show x ++ " |-> (" ++
+                            show (rationalNorm m x) ++ ", " ++
+                            show (algebraicNorm f x) ++ ")") xs)
+    f' <- pure $ Zx.derivative f
+    comment $ "Derivative of f is f'(x) = " ++ show f'
+    qcl <- pure $ take qcs (quadraticCharacters f' xs qil)
+    comment $ "Generated " ++ show qcs ++ " quadratic characters " ++
+              "nonzero for f' and all smooth elements:" ++
+              verboseList cfg "quadratic characters" (map show qcl)
+    rows <- pure $ map (formRow f m rfb ail qcl) xs
+    sql <- pure $ map (map (\i -> xs !! i)) (gaussianElimination rows)
+    comment $ "Gaussian elimination resulted in " ++ show (length sql) ++
+              " square products"
     let squareRoots [] = do
-          putStrLn $ "No more square products, factorization failed"
-          return Nothing
+            comment $ "No more square products, factorization failed"
+            pure Nothing
         squareRoots (sq : sqs) = do
-          putStrLn $ "Considering square product " ++
-                     (if length sq == 1 then
-                        "consisting of a single element of Z[w]"
-                      else
-                        "of " ++ show (length sq) ++ " elements of Z[w]") ++ ":" ++
-                     abbrevList "elements" (map show sq)
-          let rsq = rationalSquareRoot n m f' rfb sq
-          putStrLn $ "Rational square root is " ++ show rsq
-          let sameSquare = (==) (Prime.square n rsq) . Prime.square n
-          let (i,asq) = head $
-                        filter (sameSquare . snd) $
-                        zip ([0..] :: [Int]) $
-                        algebraicSquareRoot n f m f' sq
-          putStrLn $ "Element " ++ show i ++ " of candidate algebraic " ++
-                     "square roots has same square modulo n"
-          putStrLn $ "Algebraic square root is " ++ show asq
-          let g = gcd n (rsq + asq)
-          let s = 1 < g && g < n
-          putStrLn $ "Greatest common divisor of n and " ++
-                     "sum of square roots is " ++
-                     (if g == n then "n" else show g) ++
-                     (if s then "" else " (bad luck)")
-          if s then return (Just g) else squareRoots sqs
+            comment $ "Considering square product " ++
+                      (if length sq == 1 then
+                         "consisting of a single element of Z[w]"
+                       else
+                         "of " ++ show (length sq) ++ " elements of Z[w]") ++
+                      ":" ++ verboseList cfg "elements" (map show sq)
+            rsq <- pure $ rationalSquareRoot n m f' rfb sq
+            comment $ "Rational square root is " ++ show rsq
+            sameSquare <- pure $ (==) (Prime.square n rsq) . Prime.square n
+            (i,asq) <- pure $ head $ filter (sameSquare . snd) $
+                       zip ([0..] :: [Int]) $ algebraicSquareRoot n f m f' sq
+            comment $ "Element " ++ show i ++ " of candidate algebraic " ++
+                      "square roots has same square modulo n"
+            comment $ "Algebraic square root is " ++ show asq
+            g <- pure $ gcd n (rsq + asq)
+            s <- pure $ 1 < g && g < n
+            comment $ "Greatest common divisor of n and " ++
+                      "sum of square roots is " ++
+                      (if g == n then "n" else show g) ++
+                      (if s then "" else " (bad luck)")
+            if s then pure (Just g) else squareRoots sqs
     squareRoots sql
+
+factor :: Config -> Integer -> Verbose (Maybe Integer)
+factor cfg n = do
+    comment $ "NFS configuration = " ++ show cfg
+    comment $ "Attempting to factor n = " ++ show n
+    (f,m) <- pure $ selectPolynomial (polynomialConfig cfg) n
+    comment $ "Working in Z[w] where w is a complex root of f and f(m) = n"
+    comment $ "  where f(x) = " ++ show f
+    comment $ "  and m = " ++ show m
+    case Bz.factor f of
+      (1,[(_,1)]) -> factorWithPolynomial cfg n f m
+      _ -> error "f is reducible in Z[x] (use this fact to factor n)"
 
 {-
 ghci Nfs.hs

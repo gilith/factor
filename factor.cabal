@@ -23,6 +23,7 @@ Library
   hs-source-dirs: src
   ghc-options: -Wall
   exposed-modules:
+    Factor,
     Factor.Bz,
     Factor.Ec,
     Factor.Gaussian,
@@ -32,14 +33,17 @@ Library
     Factor.Prime,
     Factor.Term,
     Factor.Util,
+    Factor.Value,
     Factor.Zx
 
 executable factor
   build-depends:
     base >= 4.0 && < 5.0,
-    arithmetic >= 1.5,
-    opentheory-primitive >= 1.8,
-    random >= 1.0.1.1
+    containers >= 0.5.7.1,
+    parsec >= 3.1,
+    pretty >= 1.1,
+    random >= 1.0.1.1,
+    factor
   hs-source-dirs: src
   ghc-options: -Wall
   main-is: Main.hs

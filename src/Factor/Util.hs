@@ -11,9 +11,11 @@ portability: portable
 module Factor.Util
 where
 
+import Control.Monad (ap,liftM)
 import qualified Data.Bits as Bits
 import qualified Data.List as List
 import Data.Maybe (isJust)
+import System.IO (hPutStrLn,stderr)
 import System.Random (RandomGen)
 import qualified System.Random as Random
 
@@ -26,6 +28,36 @@ type Factor f a = Either f a
 runFactor :: Show f => Factor f a -> a
 runFactor (Left f) = error $ "found a factor " ++ show f
 runFactor (Right a) = a
+
+-------------------------------------------------------------------------------
+-- Verbose monad
+-------------------------------------------------------------------------------
+
+data Verbose a =
+    CommentVerbose String (Verbose a)
+  | ResultVerbose a
+
+instance Functor Verbose where
+  fmap = liftM
+
+instance Applicative Verbose where
+  pure = ResultVerbose
+  (<*>) = ap
+
+instance Monad Verbose where
+  CommentVerbose s v >>= f = CommentVerbose s (v >>= f)
+  ResultVerbose a >>= f = f a
+
+comment :: String -> Verbose ()
+comment s = CommentVerbose s (ResultVerbose ())
+
+runQuiet :: Verbose a -> a
+runQuiet (CommentVerbose _ v) = runQuiet v
+runQuiet (ResultVerbose a) = a
+
+runVerbose :: Verbose a -> IO a
+runVerbose (CommentVerbose c v) = do { hPutStrLn stderr c ; runVerbose v }
+runVerbose (ResultVerbose a) = return a
 
 -------------------------------------------------------------------------------
 -- Integer divides relation
@@ -66,7 +98,7 @@ exactQuotient 1 = Just
 exactQuotient (-1) = Just . negate
 exactQuotient m = \n -> if divides m n then Just (n `div` m) else Nothing
 
-divPower :: Integer -> Integer -> (Int,Integer)
+divPower :: Integer -> Integer -> (Integer,Integer)
 divPower m | m <= 1 = error "divPower argument must be positive non-unit"
 divPower m | otherwise = \n -> if n == 0 then (0,0) else go 0 n
   where go k n = if divides m n then go (k+1) (n `div` m) else (k,n)
@@ -113,7 +145,7 @@ chineseRemainder m n =
 -- 1. https://en.wikipedia.org/wiki/Nth_root_algorithm
 -------------------------------------------------------------------------------
 
-nthRoot :: Int -> Integer -> Integer
+nthRoot :: Integer -> Integer -> Integer
 nthRoot 1 k = k
 nthRoot _ 0 = 0
 nthRoot n k = if k < n' then 1 else go (k `div` n')
@@ -123,36 +155,47 @@ nthRoot n k = if k < n' then 1 else go (k `div` n')
       where
         x' = ((n' - 1) * x + k `div` (x ^ (n' - 1))) `div` n'
 
-nthRootClosest :: Int -> Integer -> Integer
+nthRootClosest :: Integer -> Integer -> Integer
 nthRootClosest n k =
     if (p+1)^n - k < k - p^n then p+1 else p
   where
     p = nthRoot n k
 
 -------------------------------------------------------------------------------
--- Square integers
+-- Integer powers
 -------------------------------------------------------------------------------
 
+destNthPower :: Integer -> Integer -> Maybe Integer
+destNthPower n k = if r ^ n == k then Just r else Nothing
+  where r = nthRoot n k
+
+isNthPower :: Integer -> Integer -> Bool
+isNthPower n = isJust . destNthPower n
+
 destSquare :: Integer -> Maybe Integer
-destSquare n = if r * r == n then Just r else Nothing
-  where r = nthRoot 2 n
+destSquare = destNthPower 2
 
 isSquare :: Integer -> Bool
-isSquare = isJust . destSquare
+isSquare = isNthPower 2
 
 -------------------------------------------------------------------------------
 -- Integer bits
 -------------------------------------------------------------------------------
 
+type Width = Int
+
 -- Caution: returns an infinite list for negative arguments
 bitsInteger :: Integer -> [Bool]
 bitsInteger = map odd . takeWhile ((/=) 0) . iterate (flip Bits.shiftR 1)
 
-widthInteger :: Integer -> Int
+widthInteger :: Integer -> Width
 widthInteger n | n < 0 = error "width only defined for nonnegative integers"
 widthInteger n | otherwise = length $ bitsInteger n
 
-uniformInteger :: RandomGen r => Int -> r -> (Integer,r)
+widthIntegerToString :: Integer -> String
+widthIntegerToString n = show (widthInteger n) ++ "-bit integer " ++ show n
+
+uniformInteger :: RandomGen r => Width -> r -> (Integer,r)
 uniformInteger w | w < 0 = error $ "no integers with width " ++ show w
 uniformInteger 0 = (,) 0
 uniformInteger w = gen (w - 1) 1
@@ -161,7 +204,7 @@ uniformInteger w = gen (w - 1) 1
     gen i n r = gen (i - 1) (2 * n + (if b then 1 else 0)) r'
       where (b,r') = Random.random r
 
-uniformOddInteger :: RandomGen r => Int -> r -> (Integer,r)
+uniformOddInteger :: RandomGen r => Width -> r -> (Integer,r)
 uniformOddInteger w _ | w < 1 = error $ "no odd integers with width " ++ show w
 uniformOddInteger w r = (2*n + 1, r')
   where (n,r') = uniformInteger (w - 1) r
@@ -242,8 +285,11 @@ unfoldrN f = go []
 -- Abbreviated lists
 -------------------------------------------------------------------------------
 
+unabbrevList :: [String] -> String
+unabbrevList = concatMap (\x -> "\n  " ++ x)
+
 abbrevList :: String -> [String] -> String
-abbrevList s l = concat (map (\x -> "\n  " ++ x) m)
+abbrevList s l = unabbrevList m
   where
     i = 3
     m = take i l ++ (if n <= 2*i + 1 then drop i l else o ++  drop (n - i) l)

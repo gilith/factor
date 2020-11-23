@@ -14,7 +14,7 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
 import qualified Factor.Prime as Prime
-import Factor.Term (Term(..))
+import Factor.Term (Term(..),Var)
 import qualified Factor.Term as Term
 import Factor.Util
 
@@ -49,9 +49,10 @@ constantMonomial n = Monomial {degreeMonomial = 0, coeffMonomial = n}
 negateMonomial :: Monomial -> Monomial
 negateMonomial m = m {coeffMonomial = Prelude.negate (coeffMonomial m)}
 
-toTermMonomial :: Monomial -> Term
-toTermMonomial (Monomial {degreeMonomial = d, coeffMonomial = n}) =
-    MultiplyTerm (IntegerTerm n) (ExpTerm VarTerm (IntegerTerm (toInteger d)))
+toTermMonomial :: Var -> Monomial -> Term
+toTermMonomial v (Monomial {degreeMonomial = d, coeffMonomial = n}) =
+    MultiplyTerm (IntegerTerm n)
+      (ExpTerm (VarTerm v) (IntegerTerm (toInteger d)))
 
 -------------------------------------------------------------------------------
 -- The polynomial ring Z[x]
@@ -64,7 +65,7 @@ data Zx =
   deriving (Eq,Ord)
 
 instance Show Zx where
-  show = Term.toString . Term.zxSimplify . Term.nnf . toTerm
+  show = Term.toString . toTerm "x"
 
 valid :: Zx -> Bool
 valid f =
@@ -169,8 +170,14 @@ fromCoeff = Factor.Zx.sum . zipWith monomial [0..]
 toCoeff :: Zx -> [Integer]
 toCoeff f = map (powerCoeff f) [0 .. degree f]
 
-toTerm :: Zx -> Term
-toTerm = Term.mkSum . map toTermMonomial . reverse . toMonomials
+toTerm :: Var -> Zx -> Term
+toTerm v =
+    Term.simplify .
+    Term.nnf .
+    Term.mkSum .
+    map (toTermMonomial v) .
+    reverse .
+    toMonomials
 
 -------------------------------------------------------------------------------
 -- Ring operations

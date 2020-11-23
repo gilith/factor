@@ -41,7 +41,7 @@ primes = 2 : 3 : sieve 5 ((9,6),Set.empty)
 -- Trial division
 -------------------------------------------------------------------------------
 
-type PrimePower = (Prime,Int)
+type PrimePower = (Prime,Integer)
 
 multiplyPrimePowers :: [PrimePower] -> [PrimePower] -> [PrimePower]
 multiplyPrimePowers pks1 [] = pks1
@@ -141,7 +141,7 @@ multiplyExp p z0 x0 k0 = go z0 x0 k0
 exp :: Prime -> Gfp -> Integer -> Gfp
 exp p = multiplyExp p 1
 
-exp2 :: Prime -> Gfp -> Int -> Gfp
+exp2 :: Prime -> Gfp -> Integer -> Gfp
 exp2 _ x 0 = x
 exp2 p x k = exp2 p (square p x) (k - 1)
 
@@ -284,7 +284,5 @@ sqrt p =
         db = multiply p d b
         tb2 = multiply p t b2
 
-    tonelliShanksMin t i =
-        if t2 == 1 then i else tonelliShanksMin t2 (i + 1)
-      where
-        t2 = square p t
+    tonelliShanksMin t i = if t2 == 1 then i else tonelliShanksMin t2 (i + 1)
+      where t2 = square p t

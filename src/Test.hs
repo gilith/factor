@@ -11,11 +11,13 @@ module Main
   ( main )
 where
 
-import Control.Monad (liftM,liftM2)
+import Control.Monad (liftM,liftM2,liftM3)
+import Data.Maybe (isNothing)
 import System.Random (StdGen)
 import qualified System.Random as Random
 import Test.QuickCheck
 
+import qualified Factor
 import qualified Factor.Bz as Bz
 import qualified Factor.Ec as Ec
 import Factor.Gaussian (Gaussian(..))
@@ -31,6 +33,8 @@ import qualified Factor.Prime as Prime
 import Factor.Term (Term(..))
 import qualified Factor.Term as Term
 import Factor.Util
+import Factor.Value (Value(..))
+import qualified Factor.Value as Value
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 
@@ -136,14 +140,14 @@ integerChineseRemainder (Positive m) (Positive n) i0 j0 =
     i = i0 `mod` m
     j = j0 `mod` n
 
-integerNthRoot :: Positive Int -> NonNegative Integer -> Bool
+integerNthRoot :: Positive Integer -> NonNegative Integer -> Bool
 integerNthRoot (Positive n) (NonNegative k) =
     p^n <= k &&
     k < (p+1)^n
   where
     p = nthRoot n k
 
-integerNthRootClosest :: Positive Int -> NonNegative Integer -> Bool
+integerNthRootClosest :: Positive Integer -> NonNegative Integer -> Bool
 integerNthRootClosest (Positive n) (NonNegative k) =
     case compare (p^n) k of
       LT -> k - p^n <= abs (k - (p+1)^n)
@@ -210,7 +214,7 @@ testUtil = do
     test ("Integer Jacobi symbol is multiplicative on denominators",integerJacobiSymbolMultiplicativeDenominator)
 
 -------------------------------------------------------------------------------
--- Testing the parsing and pretty-printing of expression terms
+-- Testing expression terms
 -------------------------------------------------------------------------------
 
 instance Arbitrary Term where
@@ -220,21 +224,25 @@ instance Arbitrary Term where
       gen n = oneof
                 (leaves ++
                  [gen1 NegateTerm] ++
-                 map gen2 [AddTerm,SubtractTerm,MultiplyTerm,ExpTerm,ModTerm])
+                 map gen2 [AddTerm,SubtractTerm,MultiplyTerm,ExpTerm,ModTerm] ++
+                 [genlet])
         where
           gen1 c = liftM c subterm
           gen2 c = liftM2 c subterm subterm
+          genlet = liftM3 LetTerm genvar subterm subterm
           subterm = gen (n `div` 2)
 
       leaves = [liftM IntegerTerm arbitrary,
                 widthTm NumberTerm,
                 widthTm PrimeTerm,
                 widthTm CompositeTerm,
-                return VarTerm]
+                liftM VarTerm genvar]
 
       widthTm c = do
         NonNegative i <- arbitrary
         return $ c i
+
+      genvar = oneof [return "x", return "y", return "z"]
 
   shrink tm = concatMap shrink stms ++ stms where stms = Term.subterms tm
 
@@ -300,7 +308,7 @@ testGaussian = do
 -- Testing primes
 -------------------------------------------------------------------------------
 
-data PrimeInteger = PrimeInteger Integer
+data PrimeInteger = PrimeInteger { unPrimeInteger :: Integer }
   deriving (Eq,Ord,Show)
 
 instance Arbitrary PrimeInteger where
@@ -910,6 +918,37 @@ testGfpx = do
     test ("GF(p)[x] monic factorization is correct",gfpxFactorMonic)
 
 -------------------------------------------------------------------------------
+-- Testing expression values
+-------------------------------------------------------------------------------
+
+instance Arbitrary Value where
+  arbitrary = Value.normalize <$>
+                oneof [liftM ZValue arbitrary,
+                       liftM2 ZxValue arbitrary genvar,
+                       liftM2 gfp prime arbitrary,
+                       liftM3 gfpx prime arbitrary genvar]
+    where
+      gfp p a = GfpValue p (Prime.fromInteger p a)
+
+      gfpx p f x = GfpxValue p (Gfpx.fromZx p f) x
+
+      prime = liftM unPrimeInteger arbitrary
+
+      genvar = oneof [return "x", return "y", return "z"]
+
+valueDegree :: Value -> Integer
+valueDegree (ZxValue f _) = zxDegree f
+valueDegree (GfpxValue _ f _) = gfpxDegree f
+valueDegree _ = 1
+
+valueTermValue :: Value -> Bool
+valueTermValue v = Value.fromTerm (Value.toTerm v) == v
+
+testValue :: IO ()
+testValue = do
+    test ("Value to term and back again is the identity",valueTermValue)
+
+-------------------------------------------------------------------------------
 -- Testing elliptic curves
 -------------------------------------------------------------------------------
 
@@ -1283,6 +1322,37 @@ testNfs = do
     test ("NFS Gaussian elimination is correct",nfsGaussianElimination)
 
 -------------------------------------------------------------------------------
+-- Testing factoring
+-------------------------------------------------------------------------------
+
+factorPowerInteger :: Positive Integer -> Positive Integer -> Positive Integer -> Bool
+factorPowerInteger (Positive m) (Positive r0) (Positive k) =
+    k > 50 ||
+    case Factor.powerInteger m n of
+      Nothing -> r <= m || k == 1
+      Just (s,j) ->
+        2 <= j &&
+        m < s &&
+        s ^ j == n &&
+        isNothing (Factor.powerInteger m s)
+  where
+    n = r ^ k
+    r = r0 + 1
+
+factorValue :: Value -> StdGen -> Bool
+factorValue v r =
+    (valueDegree v > maxDegree `div` 3) ||
+    (Value.fromTerm t == v)
+  where
+    (t,_) = runQuiet $ Factor.factorValue cfg v r
+    cfg = Factor.defaultConfig {Factor.trialDivisionConfig = 3}
+
+testFactor :: IO ()
+testFactor = do
+    test ("Factoring integer powers is correct",factorPowerInteger)
+    test ("Factoring is correct",factorValue)
+
+-------------------------------------------------------------------------------
 -- Main function
 -------------------------------------------------------------------------------
 
@@ -1295,6 +1365,8 @@ main = do
     testZx
     testGfpx
     testEc
+    testValue
     testBz
     testNfzw
     testNfs
+    testFactor

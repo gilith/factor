@@ -14,9 +14,9 @@ where
 import qualified Data.Char as Char
 import qualified Data.List as List
 --import qualified Data.Maybe as Maybe
---import System.Random (RandomGen)
+import System.Random (RandomGen)
 --import qualified System.Random as Random
-import Text.Parsec ((<|>),Parsec)
+import Text.Parsec ((<|>),Parsec,ParseError)
 import qualified Text.Parsec as Parsec
 --import Text.Parsec.Text.Lazy ()
 import Text.PrettyPrint ((<>),(<+>),Doc)
@@ -24,9 +24,9 @@ import qualified Text.PrettyPrint as PP
 
 --import Factor.Gfpx (Gfpx)
 --import qualified Factor.Gfpx as Gfpx
---import Factor.Prime (Prime,Gfp)
---import qualified Factor.Prime as Prime
---import Factor.Util
+import Factor.Prime (Gfp,Prime,PrimePower)
+import qualified Factor.Prime as Prime
+import Factor.Util
 --import Factor.Zx ()
 --import qualified Factor.Zx as Zx
 
@@ -34,23 +34,39 @@ import qualified Text.PrettyPrint as PP
 -- Terms
 -------------------------------------------------------------------------------
 
+type Var = String
+
 data Term =
     IntegerTerm Integer
-  | NumberTerm Integer
-  | PrimeTerm Integer
-  | CompositeTerm Integer
+  | NumberTerm Width
+  | PrimeTerm Width
+  | CompositeTerm Width
   | NegateTerm Term
   | AddTerm Term Term
   | SubtractTerm Term Term
   | MultiplyTerm Term Term
   | ExpTerm Term Term
-  | VarTerm
+  | VarTerm Var
   | ModTerm Term Term
+  | LetTerm Var Term Term
   deriving (Eq,Ord,Show)
 
 -------------------------------------------------------------------------------
 -- Constructors and destructors
 -------------------------------------------------------------------------------
+
+modulo :: Term -> Integer -> Term
+modulo t p = ModTerm t (IntegerTerm p)
+
+fromGfp :: Prime -> Gfp -> Term
+fromGfp p x = modulo (IntegerTerm (Prime.toSmallestInteger p x)) p
+
+fromPrimePower :: PrimePower -> Term
+fromPrimePower (p,1) = IntegerTerm p
+fromPrimePower (p,k) = ExpTerm (IntegerTerm p) (IntegerTerm k)
+
+fromPrimePowers :: [PrimePower] -> Term
+fromPrimePowers = mkProduct . map fromPrimePower
 
 mkSum :: [Term] -> Term
 mkSum [] = IntegerTerm 0
@@ -71,6 +87,7 @@ subterms (SubtractTerm t u) = [t,u]
 subterms (MultiplyTerm t u) = [t,u]
 subterms (ExpTerm t u) = [t,u]
 subterms (ModTerm t u) = [t,u]
+subterms (LetTerm _ e t) = [e,t]
 subterms _ = []
 
 -------------------------------------------------------------------------------
@@ -138,6 +155,7 @@ subtermRewrite (Rewrite rw) = Rewrite sub
     sub (MultiplyTerm t u) = sub2 MultiplyTerm t u
     sub (ExpTerm t u) = sub2 ExpTerm t u
     sub (ModTerm t u) = sub2 ModTerm t u
+    sub (LetTerm v e t) = sub2 (LetTerm v) e t
     sub _ = UnchangedResult
 
     sub1 c t =
@@ -158,6 +176,80 @@ subtermRewrite (Rewrite rw) = Rewrite sub
 bottomUpRewrite :: Rewrite -> Rewrite
 bottomUpRewrite rw = go
   where go = thenRewrite (subtermRewrite go) (tryRewrite rw)
+
+-------------------------------------------------------------------------------
+-- Expanding let terms
+-------------------------------------------------------------------------------
+
+instVarRewrite :: Var -> Term -> Rewrite
+instVarRewrite v t = Rewrite inst
+  where
+    inst (VarTerm w) | w == v = res
+    inst _ = ErrorResult
+
+    res = if t == VarTerm v then UnchangedResult else RewriteResult t
+
+expandLetRewrite :: Rewrite -> (Rewrite -> Rewrite) -> Rewrite
+expandLetRewrite (Rewrite rw1) rw2 = Rewrite bind
+  where
+    bind (LetTerm v e t) =
+        case rw1 e of
+          RewriteResult e' -> body (rw2 $ instVarRewrite v e') t
+          UnchangedResult -> body (rw2 $ instVarRewrite v e) t
+          ErrorResult -> ErrorResult
+    bind _ = ErrorResult
+
+    body (Rewrite rw) t =
+        case rw t of
+          UnchangedResult -> RewriteResult t
+          res -> res
+
+-- Never returns an error result
+expandLetsRewrite :: Rewrite -> Rewrite
+expandLetsRewrite = go
+  where
+    go rw = orelseRewrite
+              (expandLetRewrite (go rw) (go . flip orelseRewrite rw))
+              (thenRewrite (subtermRewrite (go rw)) (tryRewrite rw))
+
+-------------------------------------------------------------------------------
+-- Picking random numbers
+-------------------------------------------------------------------------------
+
+uniform :: RandomGen r => Term -> r -> (Term,r)
+uniform (NumberTerm w) r = (IntegerTerm n, r')
+  where (n,r') = uniformInteger w r
+uniform (PrimeTerm w) r = (IntegerTerm p, r')
+  where (p,r') = Prime.uniformPrime w r
+uniform (CompositeTerm w) r = (IntegerTerm c, r')
+  where (c,r') = Prime.uniformComposite w r
+uniform (NegateTerm t) r = (NegateTerm t', r')
+  where (t',r') = uniform t r
+uniform (AddTerm t u) r = (AddTerm t' u', r'')
+  where
+    (t',r') = uniform t r
+    (u',r'') = uniform u r'
+uniform (SubtractTerm t u) r = (SubtractTerm t' u', r'')
+  where
+    (t',r') = uniform t r
+    (u',r'') = uniform u r'
+uniform (MultiplyTerm t u) r = (MultiplyTerm t' u', r'')
+  where
+    (t',r') = uniform t r
+    (u',r'') = uniform u r'
+uniform (ExpTerm t u) r = (ExpTerm t' u', r'')
+  where
+    (t',r') = uniform t r
+    (u',r'') = uniform u r'
+uniform (ModTerm t u) r = (ModTerm t' u', r'')
+  where
+    (t',r') = uniform t r
+    (u',r'') = uniform u r'
+uniform (LetTerm v e t) r = (LetTerm v e' t', r'')
+  where
+    (e',r') = uniform e r
+    (t',r'') = uniform t r'
+uniform tm r = (tm,r)
 
 -------------------------------------------------------------------------------
 -- Lifting negations
@@ -230,8 +322,8 @@ expZeroRewrite = Rewrite rw
     rw (ExpTerm _ (IntegerTerm 0)) = RewriteResult $ IntegerTerm 1
     rw _ = ErrorResult
 
-zxSimplify :: Term -> Term
-zxSimplify = applyRewriteUnsafe $ bottomUpRewrite $ firstRewrite
+simplify :: Term -> Term
+simplify = applyRewriteUnsafe $ bottomUpRewrite $ firstRewrite
         [multiplyOneRewrite,
          expOneRewrite,
          expZeroRewrite]
@@ -240,11 +332,20 @@ zxSimplify = applyRewriteUnsafe $ bottomUpRewrite $ firstRewrite
 -- Parsing terms
 -------------------------------------------------------------------------------
 
+isReservedWord :: String -> Bool
+isReservedWord "in" = True
+isReservedWord "let" = True
+isReservedWord "mod" = True
+isReservedWord _ = False
+
 spaceParser :: Parsec String st ()
 spaceParser = Parsec.oneOf " \t\n" >> return ()
 
 spacesParser :: Parsec String st ()
 spacesParser = Parsec.skipMany spaceParser
+
+spaces1Parser :: Parsec String st ()
+spaces1Parser = Parsec.skipMany1 spaceParser
 
 integerParser :: Parsec String st Integer
 integerParser = zero <|> positive
@@ -264,43 +365,63 @@ integerParser = zero <|> positive
         d <- Parsec.oneOf "123456789"
         return (toInteger $ Char.digitToInt d)
 
-widthParser :: Parsec String st Integer
+widthParser :: Parsec String st Width
 widthParser = do
     _ <- Parsec.char '['
     spacesParser
     i <- integerParser
     spacesParser
     _ <- Parsec.char ']'
-    return i
+    return $ fromInteger i
 
-classWidthParser :: Char -> Parsec String st Integer
+classWidthParser :: Char -> Parsec String st Width
 classWidthParser c = do
     _ <- Parsec.char c
     spacesParser
     widthParser
 
-numberParser :: Parsec String st Integer
+numberParser :: Parsec String st Width
 numberParser = classWidthParser 'N'
 
-primeParser :: Parsec String st Integer
+primeParser :: Parsec String st Width
 primeParser = classWidthParser 'P'
 
-compositeParser :: Parsec String st Integer
+compositeParser :: Parsec String st Width
 compositeParser = classWidthParser 'C'
 
-varParser :: Parsec String st String
-varParser = Parsec.string "x"
+varParser :: Parsec String st Var
+varParser = Parsec.try $ do
+    c <- Parsec.lower
+    cs <- Parsec.many Parsec.alphaNum
+    let v = c : cs
+    if isReservedWord v then Parsec.parserFail "reserved word" else return v
 
-parser :: Parsec String st Term
-parser = do { spacesParser ; t <- modTm ; spacesParser ; return t }
+termParser :: Parsec String st Term
+termParser = do { spacesParser ; t <- topTm ; spacesParser ; return t }
   where
     parensTm = Parsec.try $ do
         _ <- Parsec.char '('
         spacesParser
-        t <- modTm
+        t <- topTm
         spacesParser
         _ <- Parsec.char ')'
         return t
+
+    topTm = letTm <|> modTm
+
+    letTm = do
+        _ <- Parsec.string "let"
+        spaces1Parser
+        v <- varParser
+        spacesParser
+        _ <- Parsec.char '='
+        spacesParser
+        e <- sumTm
+        spacesParser
+        _ <- Parsec.string "in"
+        spaces1Parser
+        t <- modTm
+        return $ LetTerm v e t
 
     modTm = do
         t <- sumTm
@@ -312,7 +433,7 @@ parser = do { spacesParser ; t <- modTm ; spacesParser ; return t }
         _ <- Parsec.char '('
         spacesParser
         _ <- Parsec.string "mod"
-        spacesParser
+        spaces1Parser
         t <- expTm
         spacesParser
         _ <- Parsec.char ')'
@@ -368,28 +489,28 @@ parser = do { spacesParser ; t <- modTm ; spacesParser ; return t }
         (PrimeTerm <$> primeParser) <|>
         (CompositeTerm <$> compositeParser) <|>
         (PrimeTerm <$> primeParser) <|>
-        (varParser >> return VarTerm) <|>
+        (VarTerm <$> varParser) <|>
         parensTm
 
+parse :: String -> Either ParseError Term
+parse = Parsec.parse (termParser <* Parsec.eof) ""
+
 fromString :: String -> Maybe Term
-fromString s =
-    case Parsec.parse (parser <* Parsec.eof) "" s of
-      Left _ -> Nothing
-      Right t -> Just t
+fromString s = case parse s of { Left _ -> Nothing ;  Right t -> Just t }
 
 -------------------------------------------------------------------------------
 -- Pretty-printing terms
 -------------------------------------------------------------------------------
 
-widthToDoc :: Integer -> Doc
-widthToDoc = PP.brackets . PP.integer
+widthToDoc :: Width -> Doc
+widthToDoc = PP.brackets . PP.int
 
 atomicToDoc :: Term -> Doc
 atomicToDoc (IntegerTerm n) = PP.integer n
 atomicToDoc (NumberTerm w) = PP.char 'N' <> widthToDoc w
 atomicToDoc (PrimeTerm w) = PP.char 'P' <> widthToDoc w
 atomicToDoc (CompositeTerm w) = PP.char 'C' <> widthToDoc w
-atomicToDoc VarTerm = PP.char 'x'
+atomicToDoc (VarTerm v) = PP.text v
 atomicToDoc tm = PP.parens (toDoc tm)
 
 expToDoc :: Term -> Doc
@@ -415,9 +536,16 @@ sumToDoc = strip []
     strip l (SubtractTerm t u) = strip ((PP.char '-' <+> prodToDoc u) : l) t
     strip l t = PP.fsep (negateToDoc t : l)
 
+modToDoc :: Term -> Doc
+modToDoc (ModTerm t m) =
+    sumToDoc t <+> PP.parens (PP.text "mod" <+> expToDoc m)
+modToDoc tm = sumToDoc tm
+
 toDoc :: Term -> Doc
-toDoc (ModTerm t m) = sumToDoc t <+> PP.parens (PP.text "mod" <+> expToDoc m)
-toDoc tm = sumToDoc tm
+toDoc (LetTerm v e t) =
+    PP.text "let" <+> PP.text v <+> PP.char '=' <+>
+    sumToDoc e <+> PP.text "in" <+> modToDoc t
+toDoc tm = modToDoc tm
 
 toString :: Term -> String
 toString = PP.renderStyle style . toDoc
@@ -432,6 +560,7 @@ let tm = AddTerm (CompositeTerm 1) (PrimeTerm 1)
 let tm = ModTerm (ExpTerm (IntegerTerm 3) (PrimeTerm 5)) (ExpTerm (NumberTerm 4) (NumberTerm 1))
 let tm = ExpTerm (ExpTerm VarTerm (NegateTerm (MultiplyTerm VarTerm (PrimeTerm 6)))) (AddTerm (ModTerm (PrimeTerm 27) (ExpTerm (PrimeTerm 29) (NumberTerm 10))) (ExpTerm (MultiplyTerm (MultiplyTerm (SubtractTerm (IntegerTerm 17) VarTerm) (AddTerm (IntegerTerm 26) (IntegerTerm 5))) (ModTerm VarTerm (MultiplyTerm (NumberTerm 36) VarTerm))) (AddTerm VarTerm (CompositeTerm 3))))
 let tm = MultiplyTerm (ExpTerm (NumberTerm 17) (IntegerTerm 10)) (IntegerTerm 3)
+let tm = nnfInteger $ LetTerm "x" (ExpTerm (IntegerTerm (-2)) (NumberTerm 0)) (AddTerm (CompositeTerm 2) (IntegerTerm 2))
 let s = toString tm
 putStrLn s
 fromString s

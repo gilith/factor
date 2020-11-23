@@ -122,7 +122,7 @@ inIdeal (Nfzw a b) (r,p) =
     a' = Prime.fromInteger p a
     b' = Prime.fromInteger p b
 
-factor :: Zx -> [Ideal] -> Nfzw -> ([(Ideal,Int)],Integer)
+factor :: Zx -> [Ideal] -> Nfzw -> ([(Ideal,Integer)],Integer)
 factor f rps0 x = go rps0 (norm f x)
   where
     go _ n | abs n <= 1 = ([],n)
