@@ -22,6 +22,7 @@ import System.IO (hPutStr,hPutStrLn,stderr)
 import qualified System.Random as Random
 
 import qualified Factor
+import qualified Factor.Ec as Ec
 import qualified Factor.Nfs as Nfs
 import Factor.Term (Term)
 import qualified Factor.Term as Term
@@ -35,6 +36,7 @@ import qualified Factor.Value as Value
 data Options =
     Options
       {trialOptions :: Integer,
+       ecmPrimesOptions :: Maybe Int,
        nfsVerboseOptions :: Bool,
        verboseOptions :: Bool}
 
@@ -42,6 +44,7 @@ defaultOptions :: Options
 defaultOptions =
     Options
       {trialOptions = Factor.trialDivisionConfig Factor.defaultConfig,
+       ecmPrimesOptions = Nothing,
        nfsVerboseOptions = False,
        verboseOptions = False}
 
@@ -53,15 +56,21 @@ options =
           "N")
        "Set trial division maximum to N",
 
-     Option "v" ["verbose"]
-       (NoArg
-          (\opt -> return opt {verboseOptions = True}))
-       "Enable verbose messages",
+     Option "" ["ecm-primes"]
+       (ReqArg
+          (\arg opt -> return opt {ecmPrimesOptions = Just (read arg)})
+          "N")
+       "Limit ECM to at most N primes",
 
      Option "" ["nfs-verbose"]
        (NoArg
           (\opt -> return opt {nfsVerboseOptions = True}))
        "Show complete lists in NFS verbose messages",
+
+     Option "v" ["verbose"]
+       (NoArg
+          (\opt -> return opt {verboseOptions = True}))
+       "Enable verbose messages",
 
      Option "" ["version"]
        (NoArg
@@ -112,10 +121,11 @@ processCommandLine args = do
 factorConfig :: Options -> Factor.Config
 factorConfig opts = cfg
     {Factor.trialDivisionConfig = trialOptions opts,
-     Factor.nfsConfig = nfs
-       {Nfs.verboseConfig = nfsVerboseOptions opts}}
+     Factor.ecmConfig = Ec.limitPrimesConfig (ecmPrimesOptions opts) ecm,
+     Factor.nfsConfig = Nfs.setVerboseConfig (nfsVerboseOptions opts) nfs}
   where
     cfg = Factor.defaultConfig
+    ecm = Factor.ecmConfig cfg
     nfs = Factor.nfsConfig cfg
 
 -------------------------------------------------------------------------------

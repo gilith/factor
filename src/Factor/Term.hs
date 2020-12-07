@@ -10,37 +10,32 @@ portability: portable
 module Factor.Term
 where
 
---import Control.Monad (filterM)
 import qualified Data.Char as Char
 import qualified Data.List as List
---import qualified Data.Maybe as Maybe
 import System.Random (RandomGen)
---import qualified System.Random as Random
 import Text.Parsec ((<|>),Parsec,ParseError)
 import qualified Text.Parsec as Parsec
---import Text.Parsec.Text.Lazy ()
 import Text.PrettyPrint ((<>),(<+>),Doc)
 import qualified Text.PrettyPrint as PP
 
---import Factor.Gfpx (Gfpx)
---import qualified Factor.Gfpx as Gfpx
 import Factor.Prime (Gfp,Prime,PrimePower)
 import qualified Factor.Prime as Prime
 import Factor.Util
---import Factor.Zx ()
---import qualified Factor.Zx as Zx
 
 -------------------------------------------------------------------------------
 -- Terms
 -------------------------------------------------------------------------------
 
+type Index = Int  -- Non-negative
+
 type Var = String
 
 data Term =
     IntegerTerm Integer
-  | NumberTerm Width
-  | PrimeTerm Width
-  | CompositeTerm Width
+  | PrimeIndexTerm Index
+  | NumberWidthTerm Width
+  | PrimeWidthTerm Width
+  | CompositeWidthTerm Width
   | NegateTerm Term
   | AddTerm Term Term
   | SubtractTerm Term Term
@@ -213,15 +208,17 @@ expandLetsRewrite = go
               (thenRewrite (subtermRewrite (go rw)) (tryRewrite rw))
 
 -------------------------------------------------------------------------------
--- Picking random numbers
+-- Picking/computing concrete values
 -------------------------------------------------------------------------------
 
 uniform :: RandomGen r => Term -> r -> (Term,r)
-uniform (NumberTerm w) r = (IntegerTerm n, r')
+uniform (PrimeIndexTerm i) r = (IntegerTerm p, r)
+  where p = Prime.primes !! i
+uniform (NumberWidthTerm w) r = (IntegerTerm n, r')
   where (n,r') = uniformInteger w r
-uniform (PrimeTerm w) r = (IntegerTerm p, r')
+uniform (PrimeWidthTerm w) r = (IntegerTerm p, r')
   where (p,r') = Prime.uniformPrime w r
-uniform (CompositeTerm w) r = (IntegerTerm c, r')
+uniform (CompositeWidthTerm w) r = (IntegerTerm c, r')
   where (c,r') = Prime.uniformComposite w r
 uniform (NegateTerm t) r = (NegateTerm t', r')
   where (t',r') = uniform t r
@@ -365,6 +362,12 @@ integerParser = zero <|> positive
         d <- Parsec.oneOf "123456789"
         return (toInteger $ Char.digitToInt d)
 
+indexParser :: Parsec String st Index
+indexParser = do
+    _ <- Parsec.char '_'
+    i <- integerParser
+    return $ fromInteger i
+
 widthParser :: Parsec String st Width
 widthParser = do
     _ <- Parsec.char '['
@@ -374,20 +377,28 @@ widthParser = do
     _ <- Parsec.char ']'
     return $ fromInteger i
 
+classIndexParser :: Char -> Parsec String st Index
+classIndexParser c = Parsec.try $ do
+    _ <- Parsec.char c
+    indexParser
+
+primeIndexParser :: Parsec String st Index
+primeIndexParser = classIndexParser 'P'
+
 classWidthParser :: Char -> Parsec String st Width
-classWidthParser c = do
+classWidthParser c = Parsec.try $ do
     _ <- Parsec.char c
     spacesParser
     widthParser
 
-numberParser :: Parsec String st Width
-numberParser = classWidthParser 'N'
+numberWidthParser :: Parsec String st Width
+numberWidthParser = classWidthParser 'N'
 
-primeParser :: Parsec String st Width
-primeParser = classWidthParser 'P'
+primeWidthParser :: Parsec String st Width
+primeWidthParser = classWidthParser 'P'
 
-compositeParser :: Parsec String st Width
-compositeParser = classWidthParser 'C'
+compositeWidthParser :: Parsec String st Width
+compositeWidthParser = classWidthParser 'C'
 
 varParser :: Parsec String st Var
 varParser = Parsec.try $ do
@@ -485,10 +496,10 @@ termParser = do { spacesParser ; t <- topTm ; spacesParser ; return t }
 
     atomicTm =
         (IntegerTerm <$> integerParser) <|>
-        (NumberTerm <$> numberParser) <|>
-        (PrimeTerm <$> primeParser) <|>
-        (CompositeTerm <$> compositeParser) <|>
-        (PrimeTerm <$> primeParser) <|>
+        (PrimeIndexTerm <$> primeIndexParser) <|>
+        (NumberWidthTerm <$> numberWidthParser) <|>
+        (PrimeWidthTerm <$> primeWidthParser) <|>
+        (CompositeWidthTerm <$> compositeWidthParser) <|>
         (VarTerm <$> varParser) <|>
         parensTm
 
@@ -502,14 +513,18 @@ fromString s = case parse s of { Left _ -> Nothing ;  Right t -> Just t }
 -- Pretty-printing terms
 -------------------------------------------------------------------------------
 
+indexToDoc :: Index -> Doc
+indexToDoc i = PP.char '_' <> PP.int i
+
 widthToDoc :: Width -> Doc
 widthToDoc = PP.brackets . PP.int
 
 atomicToDoc :: Term -> Doc
 atomicToDoc (IntegerTerm n) = PP.integer n
-atomicToDoc (NumberTerm w) = PP.char 'N' <> widthToDoc w
-atomicToDoc (PrimeTerm w) = PP.char 'P' <> widthToDoc w
-atomicToDoc (CompositeTerm w) = PP.char 'C' <> widthToDoc w
+atomicToDoc (PrimeIndexTerm w) = PP.char 'P' <> indexToDoc w
+atomicToDoc (NumberWidthTerm w) = PP.char 'N' <> widthToDoc w
+atomicToDoc (PrimeWidthTerm w) = PP.char 'P' <> widthToDoc w
+atomicToDoc (CompositeWidthTerm w) = PP.char 'C' <> widthToDoc w
 atomicToDoc (VarTerm v) = PP.text v
 atomicToDoc tm = PP.parens (toDoc tm)
 
@@ -550,19 +565,3 @@ toDoc tm = modToDoc tm
 toString :: Term -> String
 toString = PP.renderStyle style . toDoc
   where style = PP.style {PP.lineLength = 80, PP.ribbonsPerLine = 1.0}
-
-{-
-let tm = ModTerm (NegateTerm (PrimeTerm 3)) (CompositeTerm 1)
-let tm = AddTerm (IntegerTerm 1) (CompositeTerm 1)
-let tm = ModTerm (NumberTerm 2) (NumberTerm 1)
-let tm = ModTerm (IntegerTerm 2) (IntegerTerm 1)
-let tm = AddTerm (CompositeTerm 1) (PrimeTerm 1)
-let tm = ModTerm (ExpTerm (IntegerTerm 3) (PrimeTerm 5)) (ExpTerm (NumberTerm 4) (NumberTerm 1))
-let tm = ExpTerm (ExpTerm VarTerm (NegateTerm (MultiplyTerm VarTerm (PrimeTerm 6)))) (AddTerm (ModTerm (PrimeTerm 27) (ExpTerm (PrimeTerm 29) (NumberTerm 10))) (ExpTerm (MultiplyTerm (MultiplyTerm (SubtractTerm (IntegerTerm 17) VarTerm) (AddTerm (IntegerTerm 26) (IntegerTerm 5))) (ModTerm VarTerm (MultiplyTerm (NumberTerm 36) VarTerm))) (AddTerm VarTerm (CompositeTerm 3))))
-let tm = MultiplyTerm (ExpTerm (NumberTerm 17) (IntegerTerm 10)) (IntegerTerm 3)
-let tm = nnfInteger $ LetTerm "x" (ExpTerm (IntegerTerm (-2)) (NumberTerm 0)) (AddTerm (CompositeTerm 2) (IntegerTerm 2))
-let s = toString tm
-putStrLn s
-fromString s
-Parsec.parse parser "" s
--}

@@ -27,15 +27,22 @@ import Factor.Util
 type Prime = Integer
 
 primes :: [Prime]
-primes = 2 : 3 : sieve 5 ((9,6),Set.empty)
+primes = 2 : 3 : 5 : sieveP 7 ((9,6),Set.empty) (nextQ (drop 2 primes))
   where
-    sieve n ((kp,p),s) =
-      case compare n kp of
-        LT -> n : sieve (n+2) ((kp,p), Set.insert (n*n,2*n) s)
-        EQ -> sieve (n+2) (advance kp p s)
-        GT -> sieve n (advance kp p s)
+    sieveP n ((pk,p),ps) qs =
+      case compare n pk of
+        LT -> checkQ n ((pk,p),ps) qs
+        EQ -> sieveP (n+2) (incrP pk p ps) qs
+        GT -> sieveP n (incrP pk p ps) qs
 
-    advance kp p s = Set.deleteFindMin (Set.insert (kp + p, p) s)
+    checkQ n (pk,ps) (q2,q,qs) | n == q2 = sieveP (n+2) pks (nextQ qs)
+      where pks = incrP q2 (2*q) (Set.insert pk ps)
+    checkQ n ps qs = n : sieveP (n+2) ps qs
+
+    incrP pk p s = Set.deleteFindMin (Set.insert (pk+p, p) s)
+
+    nextQ [] = error "ran out of primes"
+    nextQ (q : qs) = (q*q, q, qs)
 
 -------------------------------------------------------------------------------
 -- Trial division
@@ -80,6 +87,152 @@ factorProduct ps nl = (productPrimePowers pksl, sl)
 
 trialDivision :: Integer -> ([PrimePower],Integer)
 trialDivision = factor primes
+
+-------------------------------------------------------------------------------
+-- Number of primes
+--
+-- The number of primes at most n is pi(n), which converges to n / log
+-- n by the Prime Number Theorem.
+--
+--   log2(pi(n))
+--   ==
+--   log2(n / log(n))
+--   ==
+--   log2(n) - log2(log(n))
+--   ==
+--   log2(n) - log2(log2(n) / log2(e))
+--   ==
+--   log2(log2(e)) + log2(n) - log2(log2(n))
+--
+-- The nth prime function p_n is the inverse to pi and can be
+-- estimated by the asymptotic inverse function n * log(n).
+--
+--   log2(p_n)
+--   ==
+--   log2(n * log(n))
+--   ==
+--   log2(n) + log2(log(n))
+--   ==
+--   log2(n) + log2(log2(n) / log2(e))
+--   ==
+--   log2(n) + log2(log2(n)) - log2(log2(e))
+--
+-- https://math.stackexchange.com/questions/606955/estimate-of-nth-prime
+-------------------------------------------------------------------------------
+
+primesUnder :: Integer -> Integer
+primesUnder n = toInteger (length (takeWhile (\p -> p <= n) primes))
+
+primesUnderEstimate :: Log2Integer -> Log2Integer
+primesUnderEstimate = go
+  where
+    go log2n | log2n <= t = f log2n
+    go log2n = max f_t (log2e + log2n - log2 log2n)
+
+    f = log2Integer . primesUnder . exp2Integer
+
+    f_t = f t
+    t = 5.0
+
+nthPrime :: Integer -> Integer
+nthPrime n = primes !! (Prelude.fromInteger n - 1)
+
+nthPrimeEstimate :: Log2Integer -> Log2Integer
+nthPrimeEstimate = go
+  where
+    go log2n | log2n <= t = f log2n
+    go log2n = max f_t (log2n + log2 log2n - log2e)
+
+    f = log2Integer . nthPrime . exp2Integer
+
+    f_t = f t
+    t = 5.0
+
+-------------------------------------------------------------------------------
+-- B-smooth numbers
+--
+-- The probability that a uniform integer in the range [1,N] is
+-- B-smooth is given there as u^(−u), where u = log N / log B, giving
+-- this estimate for the base-2 log of B-smooth integers at most N:
+--
+--   log2(N * u^(-u))
+--   ==
+--   log2(N) - u * log2(u)
+--
+-- For B fixed and much smaller than N, a better estimate is this
+-- lower bound (the volume of a B-dimensional shape):
+--
+--   log2((1 / pi(B)!) * Prod { log2(N) / log2(p) | p <= B })
+--   ==
+--   Sum { -log2(i) | 1 <= i <= pi(B) }
+--   + pi(B) * log2(log2(N))
+--   + Sum { -log2(log2(p)) | p <= B }
+--
+-- Turning this into a probability:
+--
+--   log2(Prob(random t-bit number is B-smooth))
+--   ==
+--   log2((2^(smooth_B(t)) - 2^(smooth_B(t-1))) / 2^(t-1))
+--   ==
+--   (smooth_B(t-1) + log2(2^(smooth_B(t) - smooth_B(t-1)) - 1)) - (t-1)
+--
+-- For C independent trials:
+--
+--   log2(Prob(at least one of C random t-bit numbers is B-smooth))
+--   ==
+--   log2(1 - (1 - 2 ^ (log2(Prob(random t-bit number is B-smooth)))) ^ C)
+--   ==
+--   log2(1 - (1 - x / C) ^ C)                          [for some x, see below]
+--   ==                                    [in the limit as C goes to infinity]
+--   log2(1 - e^(-x))
+--
+-- where
+--
+--   x / C == 2 ^ (log2(Prob(random t-bit number is B-smooth)))
+--   iff
+--   x == 2 ^ (log2(Prob(random t-bit number is B-smooth)) + log2(C))
+--
+-- https://en.wikipedia.org/wiki/Smooth_number#Distribution
+-- https://math.stackexchange.com/questions/22949/probability-of-being-b-smooth
+-- "Prime Numbers: A Computational Perspective" by Crandall and Pomerance
+-------------------------------------------------------------------------------
+
+smoothUnderLowerBound :: Integer -> Log2Integer -> Log2Integer
+smoothUnderLowerBound = go (const 0.0) bnds
+  where
+    go _ [] _ = error "ran out of bounds"
+    go f' ((p,f) : pfs) b = if b < p then f' else go f pfs b
+
+    bnds = bndp 0.0 0.0 primes
+
+    bndp _ _ [] = error "ran out of primes"
+    bndp i w (p : ps) = (p,f) : bndp i' w' ps
+      where
+        f log2n = i' * log2 log2n - w'
+        i' = i + 1.0
+        w' = w + log2 i' + log2 (log2Integer p)
+
+smoothUnder :: Integer -> Log2Integer -> Log2Integer
+smoothUnder b log2n =
+    if log2n <= log2b then log2n else max lwr (log2n - u * log2 u)
+  where
+    lwr = (if log2n < fromIntegral b then id
+           else max (smoothUnderLowerBound b log2n)) log2b
+    u = log2n / log2b
+    log2b = log2Integer b
+
+smoothProb :: Integer -> Width -> Log2Probability
+smoothProb = prob . smoothUnder
+  where
+    prob f w = f_t' + log2 (2.0 ** (f t - f_t') - 1.0) - t'
+      where
+        f_t' = f t'
+        t' = t - 1.0
+        t = fromIntegral w
+
+smoothProbTrials :: Integer -> Width -> Integer -> Log2Probability
+smoothProbTrials b t c = log2 (1.0 - Prelude.exp (-x))
+  where x = 2.0 ** (smoothProb b t + log2Integer c)
 
 -------------------------------------------------------------------------------
 -- The field GF(p) of arithmetic modulo a prime
@@ -286,3 +439,12 @@ sqrt p =
 
     tonelliShanksMin t i = if t2 == 1 then i else tonelliShanksMin t2 (i + 1)
       where t2 = square p t
+
+{-
+map (smoothUnder 20 . fromIntegral) [1..100]
+map (smoothUnder 40 . fromIntegral) [1..100]
+map (smoothUnder 100 . fromIntegral) [1..100]
+map (smoothProb 100) [1..100]
+map (smoothProb 1000) [1..100]
+map (\t -> smoothProbTrials 1000 t 1000) [1..100]
+-}

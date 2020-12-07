@@ -76,7 +76,7 @@ nfsFactorInteger cfg n r = do
 ecmFactorInteger :: RandomGen r => IntegerFactorer r
 ecmFactorInteger cfg n r = do
     comment "Firing up the elliptic curve method (ECM)"
-    (m,r') <- pure $ Ec.factor (ecmConfig cfg) n r
+    (m,r') <- Ec.factor (ecmConfig cfg) n r
     case m of
       Nothing -> nfsFactorInteger cfg n r'
       Just g -> do
@@ -99,7 +99,7 @@ powerFactorInteger f cfg n r = do
     case powerInteger (trialDivisionConfig cfg) n of
       Nothing -> primeFactorInteger f cfg n r
       Just (m,k) -> do
-        comment $ "Factor target is perfect power: " ++ show m ++ "^" ++ show k
+        comment $ "Perfect power: " ++ show m ++ "^" ++ show k
         comment $ "Adjusted factor target is " ++ widthIntegerToString m
         (pjs,r') <- primeFactorInteger f cfg m r
         pure $ (map (\(p,j) -> (p, j * k)) pjs, r')

@@ -233,10 +233,15 @@ instance Arbitrary Term where
           subterm = gen (n `div` 2)
 
       leaves = [liftM IntegerTerm arbitrary,
-                widthTm NumberTerm,
-                widthTm PrimeTerm,
-                widthTm CompositeTerm,
+                indexTm PrimeIndexTerm,
+                widthTm NumberWidthTerm,
+                widthTm PrimeWidthTerm,
+                widthTm CompositeWidthTerm,
                 liftM VarTerm genvar]
+
+      indexTm c = do
+        NonNegative i <- arbitrary
+        return $ c i
 
       widthTm c = do
         NonNegative i <- arbitrary
@@ -365,6 +370,14 @@ primeTrialDivision n =
     m = foldr (\(p,k) z -> p^k * z) s pks
     (pks,s) = Prime.trialDivision n
 
+primeSmoothUnderLowerBound :: Positive Integer -> Positive Integer -> Bool
+primeSmoothUnderLowerBound (Positive b) (Positive n) = lower <= exact
+  where
+    lower = 2.0 ** Prime.smoothUnderLowerBound b (log2Integer n)
+    exact = fromIntegral $ length $ filter bSmooth [1..n]
+    bSmooth = (==) 1 . snd . Prime.factor ps
+    ps = takeWhile (\p -> p <= b) Prime.primes
+
 primeFermat :: PrimeInteger -> Integer -> Bool
 primeFermat (PrimeInteger p) n =
     Prime.exp p x p == x
@@ -399,6 +412,7 @@ testPrime = do
     test ("Prime integers are mutually indivisible",primeIndivisible)
     test ("Prime factorization of integers is correct",primeFactor)
     test ("Prime trial division factors all integers",primeTrialDivision)
+    test ("Prime smooth number approximation is a lower bound",primeSmoothUnderLowerBound)
     test ("Prime exponentiation satisfies Fermat's little theorem",primeFermat)
     test ("Prime inverse is correct",primeInvert)
     test ("Prime test is correct",primeIsPrime)

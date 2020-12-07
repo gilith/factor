@@ -376,6 +376,9 @@ defaultConfig =
        extraRankConfig = 5,
        verboseConfig = False}
 
+setVerboseConfig :: Bool -> Config -> Config
+setVerboseConfig v cfg = cfg {verboseConfig = v}
+
 verboseList :: Config -> String -> [String] -> String
 verboseList cfg s = if verboseConfig cfg then unabbrevList else abbrevList s
 
@@ -419,7 +422,7 @@ factorWithPolynomial cfg n f m = do
     comment $ "Gaussian elimination resulted in " ++ show (length sql) ++
               " square products"
     let squareRoots [] = do
-            comment $ "No more square products, factorization failed"
+            comment $ "No more square products, NFS factorization failed"
             pure Nothing
         squareRoots (sq : sqs) = do
             comment $ "Considering square product " ++

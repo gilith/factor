@@ -210,21 +210,32 @@ uniformOddInteger w r = (2*n + 1, r')
   where (n,r') = uniformInteger (w - 1) r
 
 -------------------------------------------------------------------------------
--- Integer log
+-- Base 2 log
 -------------------------------------------------------------------------------
 
-log2Integer :: Integer -> Double
+type Log2Integer = Double
+type Log2Probability = Double
+
+log2 :: Double -> Double
+log2 = logBase 2.0
+
+log2e :: Double
+log2e = log2 (exp 1.0)
+
+log2Integer :: Integer -> Log2Integer
 log2Integer n | n <= 0 = error "log only defined for positive integers"
 log2Integer n =
-    fromInteger (toInteger k) + logBase 2.0 (fromInteger (Bits.shiftR n k))
+    fromInteger (toInteger k) + log2 (fromInteger (Bits.shiftR n k))
   where
     k = if w <= p then 0 else w - p
     w = widthInteger n
     p = 53
 
 logInteger :: Integer -> Double
-logInteger = \n -> log2Integer n / log2e
-  where log2e = logBase 2.0 (exp 1.0)
+logInteger n = log2Integer n / log2e
+
+exp2Integer :: Log2Integer -> Integer
+exp2Integer x = floor (2.0 ** x)
 
 -------------------------------------------------------------------------------
 -- The Jacobi symbol (m/n)

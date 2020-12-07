@@ -209,7 +209,7 @@ multiply :: Curve -> Point -> Integer -> Point
 multiply e p n = runFactor $ multiplyF e p n
 
 -------------------------------------------------------------------------------
--- Lenstra's elliptic curve factorization algorithm
+-- Lenstra's elliptic curve method (ECM) factorization algorithm
 --
 -- Input: An integer greater than 1 that is not divisible by 2 or 3
 -- Output: Either a nontrivial factor of the input or failure
@@ -217,51 +217,96 @@ multiply e p n = runFactor $ multiplyF e p n
 -- https://en.wikipedia.org/wiki/Lenstra_elliptic-curve_factorization
 -------------------------------------------------------------------------------
 
-data CurvesConfig =
-    FixedCurvesConfig Int
-  | OptimalCurvesConfig
+data TargetConfig =
+    CurvePointTargetConfig Int
+  | PrimeTargetConfig Int
   deriving (Eq,Ord,Show)
 
 data Config =
-    Config
-      {curvesConfig :: CurvesConfig}
+    Config {targetConfig :: [TargetConfig]}
   deriving (Eq,Ord,Show)
-
-defaultCurvesConfig :: CurvesConfig
-defaultCurvesConfig = OptimalCurvesConfig
-
-evalCurvesConfig :: CurvesConfig -> Integer -> Int
-evalCurvesConfig (FixedCurvesConfig n) _ = n
-evalCurvesConfig OptimalCurvesConfig n = 10 + w*w
-  where w = widthInteger n `div` 5
 
 defaultConfig :: Config
 defaultConfig =
-    Config
-      {curvesConfig = defaultCurvesConfig}
+    Config {targetConfig = targets 10 30}
+  where
+    targets c p | min c p <= 1 = []
+    targets c p =
+      if toInteger c ^ (3 :: Integer) < toInteger p ^ (2 :: Integer) then
+        CurvePointTargetConfig c : targets (c + c `div` 3) p
+      else
+        PrimeTargetConfig p : targets c (p + p `div` 3)
 
-factorPrime :: Prime -> [(Curve,Point)] -> Factor Integer [(Curve,Point)]
-factorPrime _ [] = return []
-factorPrime q eps = filter fin <$> mapM fac eps
+limitPrimesConfig :: Maybe Int -> Config -> Config
+limitPrimesConfig Nothing cfg = cfg
+limitPrimesConfig (Just q) cfg =
+    cfg {targetConfig = takeWhile within (targetConfig cfg)}
+  where
+    within (PrimeTargetConfig qt) = qt <= q
+    within _ = True
+
+factorPrime :: [(Curve,Point)] -> Prime -> Factor Integer [(Curve,Point)]
+factorPrime [] _ = return []
+factorPrime eps q = filter fin <$> mapM fac eps
   where
     fac (e,p) = ((,) e) <$> multiplyF e p n
     fin (_,p) = p /= Infinity
     n = last $ takeWhile (\i -> i < k) $ iterate ((*) q) 1
     k = kCurve $ fst $ head eps
 
-factorPrimes :: [Prime] -> [(Curve,Point)] -> Maybe Integer
-factorPrimes [] _ = Nothing
-factorPrimes _ [] = Nothing
-factorPrimes (q : qs) eps =
-    case factorPrime q eps of
-      Left g -> Just g
-      Right eps' -> factorPrimes qs eps'
+factorPrimes :: [(Curve,Point)] -> [Prime] -> Factor Integer [(Curve,Point)]
+factorPrimes [] _ = return []
+factorPrimes ep [] = return ep
+factorPrimes ep (q : qs) = factorPrime ep q >>= flip factorPrimes qs
 
-factor :: RandomGen r => Config -> Integer -> r -> (Maybe Integer, r)
-factor cfg k r = (factorPrimes Prime.primes eps, r')
-  where
-    (eps,r') = unfoldrN (uniformCurve k) n r
-    n = evalCurvesConfig (curvesConfig cfg) k
+factorTargets ::
+    RandomGen r => Integer -> ([(Curve,Point)],Int) -> [TargetConfig] -> r ->
+    Verbose (Maybe Integer, r)
+factorTargets _ _ [] r = do
+    comment "No more ECM curve point/prime targets, factorization failed"
+    return (Nothing,r)
+factorTargets k (ep,q) (CurvePointTargetConfig ept : ts) r = do
+    epn <- pure $ length ep
+    comment $ "Current number of curve points is " ++ show epn
+    case ept - epn of
+      epx | epx > 0 -> do
+        comment $ "Generating " ++ show epx ++
+                  " new curve points to achieve target of " ++ show ept
+        (ep0,r') <- pure $ unfoldrN (uniformCurve k) epx r
+        if q == 0 then factorTargets k (ep ++ ep0, q) ts r' else do
+          comment $ "Multiplying new curve points by first " ++ show q ++
+                    " primes"
+          f <- pure $ factorPrimes ep0 (take q Prime.primes)
+          case f of
+            Left g -> return (Just g, r')
+            Right ep' -> factorTargets k (ep ++ ep', q) ts r'
+      _ -> do
+        comment $ "Curve point target of " ++ show ept ++ " already achieved"
+        factorTargets k (ep,q) ts r
+factorTargets k (ep,q) (PrimeTargetConfig qt : ts) r = do
+    if null ep then return () else comment $
+      "Already multiplied " ++ show (length ep) ++
+      " curve points by first " ++ show q ++ " primes"
+    case qt - q of
+      qx | qx > 0 -> do
+        comment $ (if null ep then
+                     (if q == 0 then "Setting" else "Raising") ++
+                     " initial prime target to "
+                   else
+                     "Multiplying by next " ++ show qx ++
+                     " primes to achieve target of ") ++ show qt
+        f <- pure $ factorPrimes ep (take qx (drop q Prime.primes))
+        case f of
+          Left g -> return (Just g, r)
+          Right ep' -> factorTargets k (ep',qt) ts r
+      _ -> do
+        comment $ "Prime target of " ++ show qt ++ " already achieved"
+        factorTargets k (ep,q) ts r
+
+factor :: RandomGen r => Config -> Integer -> r -> Verbose (Maybe Integer, r)
+factor cfg k r = do
+    --comment $ "ECM configuration = " ++ show cfg
+    factorTargets k ([],0) (targetConfig cfg) r
 
 -------------------------------------------------------------------------------
 -- Division polynomials
@@ -534,6 +579,11 @@ let n = 2616707501 ^ 2
 let r0 = Random.mkStdGen 90
 evalCurvesConfig (curvesConfig cfg) n
 factor cfg n r0
+
+let fac n c = let b = exp2Integer (Prime.nthPrimeEstimate (fromIntegral n)) in last (takeWhile (\t -> Prime.smoothProbTrials b t (2^c) > -1.0) [1..])
+let tab ns cs = ("" : "|" : map show ns) : (map (\c -> show c : "|" : map (\n -> show (fac n c)) ns) cs)
+putStrLn "\nTable legend\nx-axis: number of primes (base 2 log)\ny-axis: number of curves (base 2 log)\nentries: largest factor bitwidth that ECM can find with probability at least 50%"
+putStrLn ("\n" ++ fmtTable (Table False False 1) (tab [1..40] [1..45]))
 
 let e = Curve 17 13 14
 let e = Curve 5 3 4
