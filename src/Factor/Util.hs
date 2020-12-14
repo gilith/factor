@@ -15,6 +15,7 @@ import Control.Monad (ap,liftM)
 import qualified Data.Bits as Bits
 import qualified Data.List as List
 import Data.Maybe (isJust)
+import qualified Data.Time as Time
 import System.IO (hPutStrLn,stderr)
 import System.Random (RandomGen)
 import qualified System.Random as Random
@@ -34,8 +35,8 @@ runFactor (Right a) = a
 -------------------------------------------------------------------------------
 
 data Verbose a =
-    CommentVerbose String (Verbose a)
-  | ResultVerbose a
+    ResultVerbose a
+  | CommentVerbose String (Verbose a)
 
 instance Functor Verbose where
   fmap = liftM
@@ -45,19 +46,34 @@ instance Applicative Verbose where
   (<*>) = ap
 
 instance Monad Verbose where
-  CommentVerbose s v >>= f = CommentVerbose s (v >>= f)
   ResultVerbose a >>= f = f a
+  CommentVerbose s v >>= f = CommentVerbose s (v >>= f)
+
+timestampFormat :: String
+timestampFormat = "[%Y-%m-%d %H:%M:%S]"
 
 comment :: String -> Verbose ()
 comment s = CommentVerbose s (ResultVerbose ())
 
 runQuiet :: Verbose a -> a
-runQuiet (CommentVerbose _ v) = runQuiet v
 runQuiet (ResultVerbose a) = a
+runQuiet (CommentVerbose _ v) = runQuiet v
 
 runVerbose :: Verbose a -> IO a
-runVerbose (CommentVerbose c v) = do { hPutStrLn stderr c ; runVerbose v }
 runVerbose (ResultVerbose a) = return a
+runVerbose (CommentVerbose s v) = do { hPutStrLn stderr s ; runVerbose v }
+
+runTimestampVerbose :: Verbose a -> IO a
+runTimestampVerbose (ResultVerbose a) = return a
+runTimestampVerbose (CommentVerbose s v) = do
+    mapM_ stamp $ lines s
+    runTimestampVerbose v
+  where
+    stamp l = do
+        t <- fmt <$> Time.getZonedTime
+        hPutStrLn stderr $ t ++ " " ++ l
+
+    fmt = Time.formatTime Time.defaultTimeLocale timestampFormat
 
 -------------------------------------------------------------------------------
 -- Integer divides relation
@@ -306,6 +322,13 @@ abbrevList s l = unabbrevList m
     m = take i l ++ (if n <= 2*i + 1 then drop i l else o ++  drop (n - i) l)
     o = ["[... " ++ show (n - 2*i) ++ " omitted " ++ s ++ " ...]"]
     n = length l
+
+-------------------------------------------------------------------------------
+-- Underlining
+-------------------------------------------------------------------------------
+
+underline :: String -> String
+underline s = s ++ "\n" ++ replicate (length s) '-'
 
 -------------------------------------------------------------------------------
 -- Pretty-print a table

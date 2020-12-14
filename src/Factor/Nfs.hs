@@ -63,6 +63,13 @@ defaultPolynomialConfig =
        polynomialBase = ClosestPolynomialBase,
        polynomialCoeff = SmallestPolynomialCoeff}
 
+fixedPolynomialConfig :: Zx -> Integer -> PolynomialConfig
+fixedPolynomialConfig f m =
+    PolynomialConfig
+      {polynomialDegree = FixedPolynomialDegree (Zx.degree f),
+       polynomialBase = FixedPolynomialBase m,
+       polynomialCoeff = FixedPolynomialCoeff (Zx.toCoeff f)}
+
 selectPolynomialDegree :: PolynomialDegree -> Integer -> Int
 selectPolynomialDegree (FixedPolynomialDegree d) _ = d
 selectPolynomialDegree OptimalPolynomialDegree n =
@@ -98,63 +105,6 @@ selectPolynomial cfg n = (Zx.fromCoeff c, m)
 -------------------------------------------------------------------------------
 -- Factor bases
 -------------------------------------------------------------------------------
-
-{-
-data FactorBaseConfig =
-    FactorBaseConfig
-      {trialsFactorBase :: Int,
-       movingAverageFactorBase :: Int}
-  deriving (Eq,Ord,Show)
-
-defaultFactorBaseConfig :: FactorBaseConfig
-defaultFactorBaseConfig =
-    FactorBaseConfig
-      {trialsFactorBase = 1000,
-       movingAverageFactorBase = 10}
-
-factorBase :: FactorBaseConfig -> (Nfzw -> Integer) -> [(Int,Prime)] -> FactorBase
-factorBase cfg norm cps = take np (map snd cps)
-  where
-    (np,_) = nsl !! (g * (i + 1))
-      where i = fromMaybe (length ds) (List.findIndex ((<) 0) ds)
-
-    ds = difference $ movingAverage $ map pairs nsl
-
-    nsl = compress $
-          snd $
-          List.mapAccumL testPrime (0,ns) cps
-
-    ns = map norm $ take t $ drop t Nfzw.list
-
-    testPrime (n,l) (c,p) = ((n',l'), (n', t - length l'))
-      where
-        n' = n + c
-        l' = mapMaybe (destSmoothInteger [p]) l
-
-    compress = dropWhile ((==) 0 . snd) .
-               map last .
-               List.groupBy (\(_,p) (_,q) -> p == q)
-
-    pairs (n,s) = (toInteger n * toInteger t) `div` toInteger s
-
-    movingAverage [] = []
-    movingAverage l = sum a : movingAverage b
-      where (a,b) = List.splitAt g l
-
-    difference (x : y : z)  = (y - x) : difference (y : z)
-    difference _ = []
-
-    t = trialsFactorBase cfg
-    g = movingAverageFactorBase cfg
-
-rationalFactorBase :: FactorBaseConfig -> Integer -> FactorBase
-rationalFactorBase cfg m = factorBase cfg (rationalNorm m) cps
-  where cps = map ((,) 1) Prime.list
-
-algebraicFactorBase :: FactorBaseConfig -> Zx -> [Ideal] -> FactorBase
-algebraicFactorBase cfg f il = factorBase cfg (algebraicNorm f) cps
-  where cps = map (\l -> (length l, head l)) $ List.group $ map snd $ il
--}
 
 type FactorBase = [Prime]
 
@@ -382,6 +332,33 @@ setVerboseConfig v cfg = cfg {verboseConfig = v}
 verboseList :: Config -> String -> [String] -> String
 verboseList cfg s = if verboseConfig cfg then unabbrevList else abbrevList s
 
+factorSquareRoots ::
+    Config -> Integer -> Zx -> Integer -> FactorBase -> Zx -> [[Nfzw]] ->
+    Verbose (Maybe Integer)
+factorSquareRoots _ _ _ _ _ _ [] = do
+    comment $ "No more square products, NFS factorization failed"
+    pure Nothing
+factorSquareRoots cfg n f m rfb f' (sq : sqs) = do
+    comment $ "Considering square product " ++
+              (if length sq == 1 then "consisting of a single element of Z[w]"
+               else "of " ++ show (length sq) ++ " elements of Z[w]") ++
+              ":" ++ verboseList cfg "elements" (map show sq)
+    rsq <- pure $ rationalSquareRoot n m f' rfb sq
+    comment $ "Rational square root is " ++ show rsq
+    sameSquare <- pure $ (==) (Prime.square n rsq) . Prime.square n
+    (i,asq) <- pure $ head $ filter (sameSquare . snd) $
+               zip ([0..] :: [Int]) $ algebraicSquareRoot n f m f' sq
+    comment $ "Element " ++ show i ++ " of candidate algebraic " ++
+              "square roots has same square modulo n"
+    comment $ "Algebraic square root is " ++ show asq
+    g <- pure $ gcd n (rsq + asq)
+    s <- pure $ 1 < g && g < n
+    comment $ "Greatest common divisor of n and " ++
+              "sum of square roots is " ++
+              (if g == n then "n" else show g) ++
+              (if s then "" else " (bad luck)")
+    if s then pure (Just g) else factorSquareRoots cfg n f m rfb f' sqs
+
 factorWithPolynomial ::
     Config -> Integer -> Zx -> Integer -> Verbose (Maybe Integer)
 factorWithPolynomial cfg n f m = do
@@ -421,32 +398,7 @@ factorWithPolynomial cfg n f m = do
     sql <- pure $ map (map (\i -> xs !! i)) (gaussianElimination rows)
     comment $ "Gaussian elimination resulted in " ++ show (length sql) ++
               " square products"
-    let squareRoots [] = do
-            comment $ "No more square products, NFS factorization failed"
-            pure Nothing
-        squareRoots (sq : sqs) = do
-            comment $ "Considering square product " ++
-                      (if length sq == 1 then
-                         "consisting of a single element of Z[w]"
-                       else
-                         "of " ++ show (length sq) ++ " elements of Z[w]") ++
-                      ":" ++ verboseList cfg "elements" (map show sq)
-            rsq <- pure $ rationalSquareRoot n m f' rfb sq
-            comment $ "Rational square root is " ++ show rsq
-            sameSquare <- pure $ (==) (Prime.square n rsq) . Prime.square n
-            (i,asq) <- pure $ head $ filter (sameSquare . snd) $
-                       zip ([0..] :: [Int]) $ algebraicSquareRoot n f m f' sq
-            comment $ "Element " ++ show i ++ " of candidate algebraic " ++
-                      "square roots has same square modulo n"
-            comment $ "Algebraic square root is " ++ show asq
-            g <- pure $ gcd n (rsq + asq)
-            s <- pure $ 1 < g && g < n
-            comment $ "Greatest common divisor of n and " ++
-                      "sum of square roots is " ++
-                      (if g == n then "n" else show g) ++
-                      (if s then "" else " (bad luck)")
-            if s then pure (Just g) else squareRoots sqs
-    squareRoots sql
+    factorSquareRoots cfg n f m rfb f' sql
 
 factor :: Config -> Integer -> Verbose (Maybe Integer)
 factor cfg n = do
@@ -457,8 +409,24 @@ factor cfg n = do
     comment $ "  where f(x) = " ++ show f
     comment $ "  and m = " ++ show m
     case Bz.factor f of
-      (1,[(_,1)]) -> factorWithPolynomial cfg n f m
-      _ -> error "f is reducible in Z[x] (use this fact to factor n)"
+      (1,[(_,1)]) -> do
+          comment $ "Verified that f(x) is irreducible in Z[x]"
+          factorWithPolynomial cfg n f m
+      (_,gks) -> do
+          comment $ "Factored f(x) in Z[x] as the product of:" ++ showProd gks
+          comment $ "Evaluating at m factors n in Z as the product of:" ++
+                    showProd (map evalFacAtM gks)
+          if x < n then pure $ Just x else do
+              comment $ "Adjust f(x) to " ++ show h
+              factorWithPolynomial cfg n h m
+        where
+          (x,h) = maximum $ map absEvalAtM gks
+          evalAtM g = Zx.evaluate g m
+          absEvalAtM (g,_) = (abs (evalAtM g), g)
+          evalFacAtM (g,k) = (Zx.constant (evalAtM g), k)
+          showProd = concatMap (\gk -> "\n  " ++ showFac gk)
+          showFac (g,1) = show g
+          showFac (g,k) = "(" ++ show g ++ ") ^ " ++ show k
 
 {-
 ghci Nfs.hs

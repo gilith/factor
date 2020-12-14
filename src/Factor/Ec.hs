@@ -580,11 +580,6 @@ let r0 = Random.mkStdGen 90
 evalCurvesConfig (curvesConfig cfg) n
 factor cfg n r0
 
-let fac n c = let b = exp2Integer (Prime.nthPrimeEstimate (fromIntegral n)) in last (takeWhile (\t -> Prime.smoothProbTrials b t (2^c) > -1.0) [1..])
-let tab ns cs = ("" : "|" : map show ns) : (map (\c -> show c : "|" : map (\n -> show (fac n c)) ns) cs)
-putStrLn "\nTable legend\nx-axis: number of primes (base 2 log)\ny-axis: number of curves (base 2 log)\nentries: largest factor bitwidth that ECM can find with probability at least 50%"
-putStrLn ("\n" ++ fmtTable (Table False False 1) (tab [1..40] [1..45]))
-
 let e = Curve 17 13 14
 let e = Curve 5 3 4
 let e = Curve 7 5 5

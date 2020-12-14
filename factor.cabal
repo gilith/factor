@@ -19,7 +19,8 @@ Library
     containers >= 0.5.7.1,
     parsec >= 3.1,
     pretty >= 1.1,
-    random >= 1.0.1.1
+    random >= 1.0.1.1,
+    time >= 1.6.0.1
   hs-source-dirs: src
   ghc-options: -Wall
   exposed-modules:
@@ -43,6 +44,7 @@ executable factor
     parsec >= 3.1,
     pretty >= 1.1,
     random >= 1.0.1.1,
+    time >= 1.6.0.1,
     factor
   hs-source-dirs: src
   ghc-options: -Wall
@@ -56,7 +58,8 @@ test-suite factor-test
     parsec >= 3.1,
     pretty >= 1.1,
     QuickCheck >= 2.4,
-    random >= 1.0.1.1
+    random >= 1.0.1.1,
+    time >= 1.6.0.1
   hs-source-dirs: src
   ghc-options: -Wall -fno-warn-orphans
   main-is: Test.hs

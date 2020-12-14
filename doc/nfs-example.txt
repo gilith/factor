@@ -1,0 +1,82 @@
+Attempting to factor 89-bit integer 361913909399305266402579347
+Trial division up to 1000 found no factors
+Factor target is 89-bit integer 361913909399305266402579347
+Firing up the elliptic curve method (ECM)
+No more ECM curve point/prime targets, factorization failed
+Cranking up the number field sieve (NFS)
+NFS configuration = Config {polynomialConfig = PolynomialConfig {polynomialDegree = OptimalPolynomialDegree, polynomialBase = ClosestPolynomialBase, polynomialCoeff = SmallestPolynomialCoeff}, rationalFactorBaseConfig = OptimalFactorBase 3.0, algebraicFactorBaseConfig = OptimalFactorBase 10.0, quadraticCharacterConfig = 20, extraRankConfig = 5, verboseConfig = False}
+Attempting to factor n = 361913909399305266402579347
+Working in Z[w] where w is a complex root of f and f(m) = n
+  where f(x) = x^4 + 1412261 * x^2 + 260933 * x - 880918
+  and m = 4361655
+Verified that f(x) is irreducible in Z[x]
+Rational factor base contains 869 prime integers:
+  2
+  3
+  5
+  [... 863 omitted primes ...]
+  6719
+  6733
+  6737
+Algebraic factor base contains 2477 first degree prime ideals:
+  (r,p) such that f(r) = 0 (mod p)
+  (0,2)
+  (2,3)
+  (6,13)
+  [... 2471 omitted prime ideals ...]
+  (10524,22469)
+  (417,22483)
+  (17289,22483)
+Searching for 1+869+2477+20+5 = 3372 smooth elements of Z[w]:
+  a + bw |-> (a + bm, (-b)^degree(f) * f(a/(-b)))
+  w |-> (4361655, -880918)
+  1 + w |-> (4361656, 270411)
+  -5 + 4w |-> (17446615, 422888577)
+  [... 3366 omitted smooth elements ...]
+  3855 + 4493w |-> (19596919770, -26545400236249427023)
+  4474 + 3879w |-> (16918864219, 157772167380741991456)
+  6719 + 1635w |-> (7131312644, 156479475467008167871)
+Derivative of f is f'(x) = 4 * x^3 + 2824522 * x + 260933
+Generated 20 quadratic characters nonzero for f' and all smooth elements:
+  (3425,22511)
+  (10017,22511)
+  (10244,22511)
+  [... 14 omitted quadratic characters ...]
+  (21454,22699)
+  (9640,22717)
+  (12171,22717)
+Gaussian elimination resulted in 202 square products
+Considering square product of 1164 elements of Z[w]:
+  w
+  1 + w
+  11 + 3w
+  [... 1158 omitted elements ...]
+  -3931 + 4399w
+  -4288 + 4047w
+  8342 + w
+Rational square root is 350141128019140063952050307
+Element 6072 of candidate algebraic square roots has same square modulo n
+Algebraic square root is 350141128019140063952050307
+Greatest common divisor of n and sum of square roots is 1 (bad luck)
+Considering square product of 1170 elements of Z[w]:
+  1 + w
+  -5 + 4w
+  14 + 5w
+  [... 1164 omitted elements ...]
+  -4288 + 4047w
+  8342 + w
+  4474 + 3879w
+Rational square root is 142471353967682980899248773
+Element 6235 of candidate algebraic square roots has same square modulo n
+Algebraic square root is 286624162482494177364242873
+Greatest common divisor of n and sum of square roots is 200504042581
+NFS factorization: 200504042581 * 1805020511010887
+Factor target is 38-bit integer 200504042581
+Prime: 200504042581
+Factor target is 51-bit integer 1805020511010887
+Prime: 1805020511010887
+361913909399305266402579347
+==
+200504042581 * 1805020511010887
+2538.27user 17.20system 42:42.45elapsed 99%CPU (0avgtext+0avgdata 10146704maxresident)k
+0inputs+40outputs (0major+2536795minor)pagefaults 0swaps

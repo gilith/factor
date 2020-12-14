@@ -38,29 +38,41 @@ data Options =
       {trialOptions :: Integer,
        ecmPrimesOptions :: Maybe Int,
        nfsVerboseOptions :: Bool,
-       verboseOptions :: Bool}
+       verboseOptions :: Bool,
+       timestampOptions :: Bool}
 
 defaultOptions :: Options
 defaultOptions =
     Options
       {trialOptions = Factor.trialDivisionConfig Factor.defaultConfig,
-       ecmPrimesOptions = Nothing,
+       ecmPrimesOptions = Just 100000,  -- up to ~100-bit factors
        nfsVerboseOptions = False,
-       verboseOptions = False}
+       verboseOptions = False,
+       timestampOptions = False}
+
+readArg :: Read a => String -> String -> a
+readArg a s =
+    case reads s of
+      [(v,"")] -> v
+      _ -> error $ "Couldn't parse argument " ++ a ++ ": " ++ show s
+
+readMaybeArg :: Read a => String -> String -> Maybe a
+readMaybeArg _ "-" = Nothing
+readMaybeArg a s = Just $ readArg a s
 
 options :: [ OptDescr (Options -> IO Options) ]
 options =
     [Option "" ["trial"]
        (ReqArg
-          (\arg opt -> return opt {trialOptions = read arg})
+          (\arg opt -> return opt {trialOptions = readArg "N" arg})
           "N")
        "Set trial division maximum to N",
 
      Option "" ["ecm-primes"]
        (ReqArg
-          (\arg opt -> return opt {ecmPrimesOptions = Just (read arg)})
+          (\arg opt -> return opt {ecmPrimesOptions = readMaybeArg "N" arg})
           "N")
-       "Limit ECM to at most N primes",
+       "Limit ECM to first N primes (use - for no limit)",
 
      Option "" ["nfs-verbose"]
        (NoArg
@@ -71,6 +83,11 @@ options =
        (NoArg
           (\opt -> return opt {verboseOptions = True}))
        "Enable verbose messages",
+
+     Option "t" ["timestamp"]
+       (NoArg
+          (\opt -> return opt {timestampOptions = True}))
+       "Prepend verbose messages with timestamp",
 
      Option "" ["version"]
        (NoArg
@@ -147,7 +164,8 @@ main = do
     -- Process command line
     args <- getArgs
     (opts,expr) <- processCommandLine args
-    Options {verboseOptions = verbose} <- pure opts
+    Options {verboseOptions = verbose,
+             timestampOptions = timestamp} <- pure opts
     -- Parse the input expression as a term
     tm <- pure $ case Term.parse expr of
                    Left e -> error $ show e
@@ -163,7 +181,9 @@ main = do
     outputTermIfChanged tm' "==" tm''
     -- Factor the value
     cfg <- pure $ factorConfig opts
-    (fac,_) <- (if verbose then runVerbose else pure . runQuiet)
+    (fac,_) <- (if not verbose then pure . runQuiet
+                else if not timestamp then runVerbose
+                else runTimestampVerbose)
                (Factor.factorValue cfg val rnd')
     outputTermChange "==" fac
     return ()

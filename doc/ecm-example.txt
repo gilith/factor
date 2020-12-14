@@ -1,0 +1,64 @@
+Attempting to factor 115-bit integer 40583960879376931768709021465702027
+Trial division up to 1000 found no factors
+Factor target is 115-bit integer 40583960879376931768709021465702027
+Firing up the elliptic curve method (ECM)
+Setting initial prime target to 30
+Current number of curve points is 0
+Generating 10 new curve points to achieve target of 10
+Multiplying new curve points by first 30 primes
+Already multiplied 10 curve points by first 30 primes
+Multiplying by next 10 primes to achieve target of 40
+Current number of curve points is 10
+Generating 3 new curve points to achieve target of 13
+Multiplying new curve points by first 40 primes
+Already multiplied 13 curve points by first 40 primes
+Multiplying by next 13 primes to achieve target of 53
+Already multiplied 13 curve points by first 53 primes
+Multiplying by next 17 primes to achieve target of 70
+Current number of curve points is 13
+Generating 4 new curve points to achieve target of 17
+Multiplying new curve points by first 70 primes
+Already multiplied 17 curve points by first 70 primes
+Multiplying by next 23 primes to achieve target of 93
+Current number of curve points is 17
+Generating 5 new curve points to achieve target of 22
+Multiplying new curve points by first 93 primes
+Already multiplied 22 curve points by first 93 primes
+Multiplying by next 31 primes to achieve target of 124
+Current number of curve points is 22
+Generating 7 new curve points to achieve target of 29
+Multiplying new curve points by first 124 primes
+Already multiplied 29 curve points by first 124 primes
+Multiplying by next 41 primes to achieve target of 165
+Already multiplied 29 curve points by first 165 primes
+Multiplying by next 55 primes to achieve target of 220
+Current number of curve points is 29
+Generating 9 new curve points to achieve target of 38
+Multiplying new curve points by first 220 primes
+Already multiplied 38 curve points by first 220 primes
+Multiplying by next 73 primes to achieve target of 293
+Current number of curve points is 38
+Generating 12 new curve points to achieve target of 50
+Multiplying new curve points by first 293 primes
+Already multiplied 50 curve points by first 293 primes
+Multiplying by next 97 primes to achieve target of 390
+Already multiplied 50 curve points by first 390 primes
+Multiplying by next 130 primes to achieve target of 520
+Current number of curve points is 50
+Generating 16 new curve points to achieve target of 66
+Multiplying new curve points by first 520 primes
+Already multiplied 66 curve points by first 520 primes
+Multiplying by next 173 primes to achieve target of 693
+Current number of curve points is 66
+Generating 22 new curve points to achieve target of 88
+Multiplying new curve points by first 693 primes
+ECM factorization: 201301130512090183 * 201608211420051869
+Factor target is 58-bit integer 201301130512090183
+Prime: 201301130512090183
+Factor target is 58-bit integer 201608211420051869
+Prime: 201608211420051869
+40583960879376931768709021465702027
+==
+201301130512090183 * 201608211420051869
+130.55user 0.75system 2:11.65elapsed 99%CPU (0avgtext+0avgdata 6864maxresident)k
+0inputs+48outputs (0major+1813minor)pagefaults 0swaps

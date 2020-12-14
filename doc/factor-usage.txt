@@ -1,0 +1,17 @@
+Usage: factor [options] "expression to factor"
+      --trial=N       Set trial division maximum to N
+      --ecm-primes=N  Limit ECM to first N primes (use - for no limit)
+      --nfs-verbose   Show complete lists in NFS verbose messages
+  -v  --verbose       Enable verbose messages
+  -t  --timestamp     Prepend verbose messages with timestamp
+      --version       Print version
+  -h  --help          Show help
+Example input expressions:
+  2047               Concrete integer
+  2^2^7 + 1          Integer expression
+  N[100]             Random 100-bit positive integer
+  P[50] * P[50]      Product of random 50-bit primes
+  x^4 - 10*x^2 + 1   Polynomial over the integers
+  x^5^2 - x (mod 5)  Polynomial over GF(5)
+Let expressions are supported: let p = P[4] in x^p - x (mod p)
+Multivariate polynomials (e.g., y^2 - x^3 - a*x - b) are not supported

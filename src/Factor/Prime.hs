@@ -447,4 +447,5 @@ map (smoothUnder 100 . fromIntegral) [1..100]
 map (smoothProb 100) [1..100]
 map (smoothProb 1000) [1..100]
 map (\t -> smoothProbTrials 1000 t 1000) [1..100]
+previousPrime 200504042599 <$> Random.getStdGen
 -}
