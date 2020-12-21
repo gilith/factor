@@ -78,5 +78,5 @@ Prime: 1805020511010887
 361913909399305266402579347
 ==
 200504042581 * 1805020511010887
-2538.27user 17.20system 42:42.45elapsed 99%CPU (0avgtext+0avgdata 10146704maxresident)k
-0inputs+40outputs (0major+2536795minor)pagefaults 0swaps
+2600.40user 17.43system 43:45.03elapsed 99%CPU (0avgtext+0avgdata 36516maxresident)k
+0inputs+40outputs (0major+2033243minor)pagefaults 0swaps

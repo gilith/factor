@@ -29,7 +29,7 @@ ecmBatch = 10
 --
 
 nfsWidth :: [Width]
-nfsWidth = [20,25..45]
+nfsWidth = [20,25..75]
 
 nfsBatch :: Int
 nfsBatch = 10

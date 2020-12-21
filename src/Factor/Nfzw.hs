@@ -40,12 +40,16 @@ valid (Nfzw 0 0) = True
 valid (Nfzw a b) = coprime a b
 
 -------------------------------------------------------------------------------
--- All valid elements a + bw where b > 0
+-- Valid elements a + bw where b > 0
 -------------------------------------------------------------------------------
 
-list :: [Nfzw]
-list = filter valid $ concatMap line [0..]
-  where line k = map (\a -> Nfzw a (k + 1 - abs a)) [(-k)..k]
+filterValidLine :: (Nfzw -> Bool) -> Integer -> [Nfzw]
+filterValidLine p k =
+    filter (\x -> valid x && p x) $
+    map (\a -> Nfzw a (k + 1 - abs a)) [(-k)..k]
+
+filterValid :: (Nfzw -> Bool) -> [Nfzw]
+filterValid p = concatMap (filterValidLine p) [0..]
 
 -------------------------------------------------------------------------------
 -- Ring operations

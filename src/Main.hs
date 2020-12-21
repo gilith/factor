@@ -37,6 +37,7 @@ data Options =
     Options
       {trialOptions :: Integer,
        ecmPrimesOptions :: Maybe Int,
+       nfsCharsOptions :: Maybe Int,
        nfsVerboseOptions :: Bool,
        verboseOptions :: Bool,
        timestampOptions :: Bool}
@@ -46,6 +47,7 @@ defaultOptions =
     Options
       {trialOptions = Factor.trialDivisionConfig Factor.defaultConfig,
        ecmPrimesOptions = Just 100000,  -- up to ~100-bit factors
+       nfsCharsOptions = Nothing,
        nfsVerboseOptions = False,
        verboseOptions = False,
        timestampOptions = False}
@@ -73,6 +75,12 @@ options =
           (\arg opt -> return opt {ecmPrimesOptions = readMaybeArg "N" arg})
           "N")
        "Limit ECM to first N primes (use - for no limit)",
+
+     Option "" ["nfs-chars"]
+       (ReqArg
+          (\arg opt -> return opt {nfsCharsOptions = Just $ readArg "N" arg})
+          "N")
+       "Use N quadratic characters in NFS",
 
      Option "" ["nfs-verbose"]
        (NoArg
@@ -138,8 +146,11 @@ processCommandLine args = do
 factorConfig :: Options -> Factor.Config
 factorConfig opts = cfg
     {Factor.trialDivisionConfig = trialOptions opts,
-     Factor.ecmConfig = Ec.limitPrimesConfig (ecmPrimesOptions opts) ecm,
-     Factor.nfsConfig = Nfs.setVerboseConfig (nfsVerboseOptions opts) nfs}
+     Factor.ecmConfig =
+         Ec.limitPrimesConfig (ecmPrimesOptions opts) ecm,
+     Factor.nfsConfig =
+         Nfs.setQuadraticCharacterConfig (nfsCharsOptions opts) $
+         Nfs.setVerboseConfig (nfsVerboseOptions opts) nfs}
   where
     cfg = Factor.defaultConfig
     ecm = Factor.ecmConfig cfg

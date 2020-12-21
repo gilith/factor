@@ -11,73 +11,89 @@ Each invocation generates a line of results with the following fields:
 - Time spent computing rational and algebraic square roots
 
 P[20] * P[20]
-Instant 11M Instant Instant Instant Instant
-Instant 10M Instant 1s Instant Instant
-Instant 9.8M Instant Instant Instant Instant
-Instant 11M Instant Instant Instant Instant
-Instant 10M Instant Instant Instant Instant
-Instant 9.8M Instant Instant Instant Instant
-Instant 9.8M Instant Instant Instant 1s
-Instant 7.1M Instant Instant Instant Instant
-Instant 7.1M Instant Instant Instant Instant
-Instant 7.8M Instant Instant Instant Instant
+Instant 5.1M Instant Instant Instant Instant
+Instant 5.2M Instant 1s Instant Instant
+Instant 5.1M Instant Instant Instant Instant
+Instant 5.1M Instant Instant Instant Instant
+Instant 5.2M Instant Instant Instant 1s
+Instant 6.0M Instant Instant Instant Instant
+Instant 5.2M Instant Instant Instant Instant
+Instant 5.1M Instant Instant Instant Instant
+Instant 5.1M Instant 1s Instant Instant
+Instant 5.1M Instant Instant Instant Instant
 
 P[25] * P[25]
-Instant 15M Instant 1s Instant Instant
-3s 51M Instant 2s 1s 1s
-1s 35M Instant 1s 1s Instant
-1s 21M Instant 1s Instant Instant
-3s 55M Instant 3s Instant 1s
-1s 29M Instant 1s Instant Instant
-1s 27M Instant 1s 1s Instant
-Instant 15M Instant Instant 1s Instant
-2s 41M Instant 2s Instant Instant
-2s 37M Instant 2s Instant Instant
+1s 7.1M Instant 1s 1s Instant
+1s 7.1M Instant 1s Instant Instant
+1s 7.1M Instant 1s 1s Instant
+3s 6.1M Instant 3s 1s Instant
+2s 7.1M Instant 2s Instant Instant
+1s 6.1M Instant 1s Instant Instant
+2s 6.1M Instant 2s 1s Instant
+1s 7.1M Instant 1s Instant 1s
+3s 7.1M Instant 2s 1s Instant
+1s 7.1M Instant 2s Instant Instant
 
 P[30] * P[30]
-8s 100M Instant 7s 1s 1s
-8s 89M Instant 6s 1s 2s
-38s 0.5G Instant 36s 1s 1s
-9s 93M Instant 7s Instant 3s
-9s 109M Instant 7s 1s 1s
-9s 108M Instant 7s 1s 1s
-7s 61M Instant 4s 1s 2s
-13s 161M Instant 12s Instant 1s
-5s 47M Instant 2s 1s 2s
-5s 65M Instant 4s 1s 1s
+8s 9.1M Instant 7s 1s 1s
+12s 9.1M Instant 11s 1s 1s
+14s 9.1M Instant 12s 1s 1s
+9s 9.1M Instant 7s Instant 2s
+12s 9.1M Instant 9s 1s 3s
+7s 9.1M Instant 6s Instant 2s
+8s 9.1M Instant 6s 1s 2s
+3s 9.1M Instant 2s 1s Instant
+6s 9.1M Instant 5s 1s Instant
+12s 8.8M Instant 12s Instant 1s
 
 P[35] * P[35]
-41s 0.3G Instant 34s 3s 4s
-75s 0.6G Instant 61s 3s 12s
-75s 0.6G Instant 67s 2s 7s
-55s 0.3G Instant 34s 3s 18s
-35s 163M Instant 16s 3s 17s
-62s 0.5G Instant 53s 3s 6s
-18s 148M Instant 14s 3s 2s
-54s 0.4G Instant 41s 2s 12s
-92s 0.8G Instant 84s 3s 6s
-84s 0.8G Instant 78s 3s 4s
+3m 12M Instant 3m 2s 8s
+23s 12M 1s 12s 2s 9s
+23s 12M Instant 19s 2s 3s
+49s 12M Instant 43s 2s 5s
+3m 11M Instant 3m 2s 5s
+45s 12M Instant 39s 3s 4s
+3m 13M Instant 3m 3s 20s
+80s 13M Instant 71s 3s 6s
+59s 13M Instant 48s 3s 9s
+57s 12M Instant 41s 2s 15s
 
 P[40] * P[40]
-7m 2.7G Instant 7m 9s 29s
-5m 2.1G Instant 5m 8s 24s
-5m 1.9G 1s 4m 8s 58s
-4m 1.5G Instant 3m 7s 18s
-9m 3.4G 1s 8m 8s 30s
-7m 2.6G 1s 6m 8s 66s
-6m 2.2G Instant 5m 8s 27s
-2m 0.9G Instant 2m 8s 13s
-10m 3.0G Instant 7m 9s 2m
-6m 2.2G Instant 5m 8s 53s
+4m 21M Instant 4m 7s 24s
+3m 20M Instant 3m 6s 19s
+13m 22M Instant 11m 7s 2m
+10m 20M Instant 9m 6s 43s
+6m 22M 1s 5m 7s 30s
+25m 22M Instant 24m 6s 44s
+6m 22M Instant 4m 7s 87s
+13m 20M Instant 13m 6s 30s
+6m 21M Instant 5m 6s 26s
+10m 20M Instant 8m 6s 90s
 
 P[45] * P[45]
-11m 1.6G Instant 6m 21s 4m
-52m 11G Instant 45m 25s 7m
-35m 6.6G Instant 27m 20s 8m
-17m 2.6G Instant 10m 20s 7m
-14m 2.3G Instant 9m 19s 4m
-26m 5.8G Instant 23m 19s 2m
-58m 7.9G 1s 32m 22s 25m
-21m 4.0G Instant 14m 19s 6m
-24m 5.4G 1s 21m 22s 2m
-7m 1.4G 1s 5m 19s 100s
+77m 38M 1s 68m 17s 8m
+14m 37M 1s 12m 18s 105s
+27m 36M Instant 22m 17s 5m
+38m 34M Instant 34m 15s 3m
+21m 36M Instant 16m 16s 4m
+5m 37M Instant 3m 18s 2m
+25m 38M Instant 19m 17s 5m
+58m 38M 1s 48m 18s 9m
+67m 35M Instant 64m 15s 2m
+19m 37M Instant 14m 18s 4m
+
+P[50] * P[50]
+2h 75M 1s 2h 53s 28m
+59m 70M 1s 38m 52s 20m
+99m 67M 1s 80m 51s 17m
+2h 70M 1s 2h 50s 11m
+2h 63M Instant 2h 45s 11m
+65m 69M Instant 58m 50s 6m
+93m 66M Instant 81m 47s 11m
+40m 71M 1s 30m 53s 8m
+2h 70M 1s 2h 55s 12m
+6h 78M Instant 6h 50s 15m
+
+P[55] * P[55]
+7h 148M 1s 5h 2m 2h
+13h 146M 1s 12h 2m 50m

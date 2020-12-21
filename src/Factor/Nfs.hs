@@ -153,7 +153,7 @@ isSmoothNfzw f m rfb afb x =
     isSmoothInteger afb (algebraicNorm f x)
 
 smoothNfzw :: Zx -> Integer -> FactorBase -> FactorBase -> [Nfzw]
-smoothNfzw f m rfb afb = filter (isSmoothNfzw f m rfb afb) $ Nfzw.list
+smoothNfzw f m rfb afb = Nfzw.filterValid (isSmoothNfzw f m rfb afb)
 
 -------------------------------------------------------------------------------
 -- Quadratic characters
@@ -234,6 +234,8 @@ gaussianElimination rows =
 
 -------------------------------------------------------------------------------
 -- Square roots
+--
+-- https://hal.inria.fr/hal-00756838/en
 -------------------------------------------------------------------------------
 
 rationalSquareRoot :: Integer -> Integer -> Zx -> [Prime] -> [Nfzw] -> Integer
@@ -328,6 +330,10 @@ defaultConfig =
 
 setVerboseConfig :: Bool -> Config -> Config
 setVerboseConfig v cfg = cfg {verboseConfig = v}
+
+setQuadraticCharacterConfig :: Maybe Int -> Config -> Config
+setQuadraticCharacterConfig Nothing cfg = cfg
+setQuadraticCharacterConfig (Just q) cfg = cfg {quadraticCharacterConfig = q}
 
 verboseList :: Config -> String -> [String] -> String
 verboseList cfg s = if verboseConfig cfg then unabbrevList else abbrevList s
