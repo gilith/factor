@@ -1,7 +1,7 @@
 name: factor
 version: 1.1
 category: Number Theory
-synopsis: Factoring integers
+synopsis: Factoring integers and polynomials
 license: MIT
 license-file: LICENSE
 cabal-version: >= 1.8.0.2
@@ -10,8 +10,14 @@ extra-source-files: README.md
 author: Joe Leslie-Hurd <joe@gilith.com>
 maintainer: Joe Leslie-Hurd <joe@gilith.com>
 description:
-  Factoring positive integers using the Williams p+1 factorization
-  method.
+  This package implements a library of factoring algorithms, including
+  the number field sieve for factoring arbitrary integers, the
+  elliptic curve method for finding small factors of integers, the
+  Miller-Rabin probabilistic primality test for integers, the
+  Berlekamp-Zassenhaus algorithm for factoring integer polynomials,
+  the Berlekamp algorithm for factoring polynomials over GF(p) (for
+  small primes p), and the Cantor–Zassenhaus algorithm for factoring
+  polynomials over GF(p) (for arbitrary odd primes p).
 
 Library
   build-depends:
