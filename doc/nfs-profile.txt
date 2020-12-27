@@ -5,95 +5,94 @@ Each section below named EXPR profiles 10 invocations of
 Each invocation generates a line of results with the following fields:
 - Total time spent
 - Peak memory usage
+- Number of smooth elements
 - Time spent selecting polynomial and factor bases
 - Time spent sieving for smooth elements
 - Time spent in Gaussian elimination
 - Time spent computing rational and algebraic square roots
 
 P[20] * P[20]
-Instant 5.1M Instant Instant Instant Instant
-Instant 5.2M Instant 1s Instant Instant
-Instant 5.1M Instant Instant Instant Instant
-Instant 5.1M Instant Instant Instant Instant
-Instant 5.2M Instant Instant Instant 1s
-Instant 6.0M Instant Instant Instant Instant
-Instant 5.2M Instant Instant Instant Instant
-Instant 5.1M Instant Instant Instant Instant
-Instant 5.1M Instant 1s Instant Instant
-Instant 5.1M Instant Instant Instant Instant
+Instant 5.2M 393 Instant Instant Instant Instant
+Instant 5.3M 390 Instant 1s Instant Instant
+Instant 6.1M 388 Instant Instant Instant Instant
+Instant 5.2M 400 Instant Instant 1s Instant
+Instant 5.2M 332 Instant Instant Instant Instant
+Instant 5.2M 366 Instant Instant Instant 1s
+Instant 6.1M 400 Instant Instant Instant Instant
+Instant 5.2M 366 Instant Instant Instant Instant
+Instant 5.2M 353 Instant Instant Instant Instant
+Instant 5.1M 350 Instant 1s Instant Instant
 
 P[25] * P[25]
-1s 7.1M Instant 1s 1s Instant
-1s 7.1M Instant 1s Instant Instant
-1s 7.1M Instant 1s 1s Instant
-3s 6.1M Instant 3s 1s Instant
-2s 7.1M Instant 2s Instant Instant
-1s 6.1M Instant 1s Instant Instant
-2s 6.1M Instant 2s 1s Instant
-1s 7.1M Instant 1s Instant 1s
-3s 7.1M Instant 2s 1s Instant
-1s 7.1M Instant 2s Instant Instant
+Instant 7.1M 626 Instant Instant Instant 1s
+2s 7.1M 628 Instant 1s Instant 1s
+1s 7.1M 621 Instant 1s Instant 1s
+2s 7.1M 662 Instant 1s Instant 1s
+1s 7.1M 628 Instant 1s 1s Instant
+2s 7.1M 651 Instant 1s Instant 1s
+5s 7.1M 610 Instant 5s Instant Instant
+2s 7.1M 623 Instant 2s Instant 1s
+1s 7.1M 611 Instant 1s Instant Instant
+2s 7.1M 630 Instant 1s 1s Instant
 
 P[30] * P[30]
-8s 9.1M Instant 7s 1s 1s
-12s 9.1M Instant 11s 1s 1s
-14s 9.1M Instant 12s 1s 1s
-9s 9.1M Instant 7s Instant 2s
-12s 9.1M Instant 9s 1s 3s
-7s 9.1M Instant 6s Instant 2s
-8s 9.1M Instant 6s 1s 2s
-3s 9.1M Instant 2s 1s Instant
-6s 9.1M Instant 5s 1s Instant
-12s 8.8M Instant 12s Instant 1s
+12s 8.8M 1013 Instant 11s 1s 1s
+7s 9.1M 1031 Instant 6s 1s 1s
+23s 9.1M 1038 Instant 14s 1s 8s
+8s 9.1M 1045 Instant 6s 1s 2s
+8s 9.1M 1057 Instant 5s Instant 3s
+32s 9.1M 980 Instant 30s 1s 2s
+13s 9.1M 1021 Instant 9s Instant 4s
+23s 9.1M 1014 Instant 22s 1s 1s
+8s 9.1M 1012 Instant 7s Instant 1s
+8s 9.1M 1051 Instant 4s Instant 5s
 
 P[35] * P[35]
-3m 12M Instant 3m 2s 8s
-23s 12M 1s 12s 2s 9s
-23s 12M Instant 19s 2s 3s
-49s 12M Instant 43s 2s 5s
-3m 11M Instant 3m 2s 5s
-45s 12M Instant 39s 3s 4s
-3m 13M Instant 3m 3s 20s
-80s 13M Instant 71s 3s 6s
-59s 13M Instant 48s 3s 9s
-57s 12M Instant 41s 2s 15s
+55s 12M 1590 Instant 39s 2s 14s
+91s 12M 1581 Instant 84s 2s 6s
+110s 13M 1647 Instant 100s 3s 7s
+72s 12M 1511 Instant 66s 2s 5s
+56s 12M 1551 Instant 44s 2s 11s
+3m 12M 1583 Instant 2m 2s 8s
+2m 13M 1659 Instant 102s 3s 17s
+22s 12M 1551 Instant 17s 2s 3s
+103s 13M 1653 Instant 89s 3s 12s
+97s 12M 1577 Instant 83s 3s 12s
 
 P[40] * P[40]
-4m 21M Instant 4m 7s 24s
-3m 20M Instant 3m 6s 19s
-13m 22M Instant 11m 7s 2m
-10m 20M Instant 9m 6s 43s
-6m 22M 1s 5m 7s 30s
-25m 22M Instant 24m 6s 44s
-6m 22M Instant 4m 7s 87s
-13m 20M Instant 13m 6s 30s
-6m 21M Instant 5m 6s 26s
-10m 20M Instant 8m 6s 90s
+6m 20M 2387 Instant 6m 6s 32s
+4m 21M 2377 Instant 3m 7s 42s
+3m 20M 2333 Instant 2m 6s 14s
+12m 22M 2470 Instant 10m 7s 102s
+4m 20M 2310 1s 4m 6s 19s
+3m 21M 2421 Instant 113s 6s 80s
+12m 22M 2464 Instant 11m 8s 34s
+7m 21M 2413 1s 6m 7s 48s
+7m 21M 2396 Instant 5m 6s 101s
+5m 22M 2488 Instant 4m 7s 28s
 
 P[45] * P[45]
-77m 38M 1s 68m 17s 8m
-14m 37M 1s 12m 18s 105s
-27m 36M Instant 22m 17s 5m
-38m 34M Instant 34m 15s 3m
-21m 36M Instant 16m 16s 4m
-5m 37M Instant 3m 18s 2m
-25m 38M Instant 19m 17s 5m
-58m 38M 1s 48m 18s 9m
-67m 35M Instant 64m 15s 2m
-19m 37M Instant 14m 18s 4m
+4m 37M 3536 Instant 2m 16s 63s
+33m 37M 3532 1s 31m 18s 2m
+41m 37M 3509 1s 39m 18s 2m
+16m 38M 3576 1s 14m 18s 2m
+7m 37M 3560 Instant 4m 18s 2m
+3m 38M 3633 Instant 2m 18s 47s
+12m 38M 3659 Instant 6m 19s 5m
+10m 38M 3612 1s 5m 18s 4m
+9m 38M 3603 1s 7m 18s 114s
+10m 36M 3488 1s 8m 17s 114s
 
 P[50] * P[50]
-2h 75M 1s 2h 53s 28m
-59m 70M 1s 38m 52s 20m
-99m 67M 1s 80m 51s 17m
-2h 70M 1s 2h 50s 11m
-2h 63M Instant 2h 45s 11m
-65m 69M Instant 58m 50s 6m
-93m 66M Instant 81m 47s 11m
-40m 71M 1s 30m 53s 8m
-2h 70M 1s 2h 55s 12m
-6h 78M Instant 6h 50s 15m
+5h 84M 5199 Instant 5h 55s 33m
+2h 70M 5155 Instant 2h 54s 37m
+110m 73M 5273 1s 85m 60s 24m
+2h 75M 5351 Instant 108m 59s 14m
+63m 67M 5071 1s 44m 50s 18m
+28m 69M 5182 Instant 12m 52s 15m
+96m 73M 5306 Instant 83m 60s 13m
+58m 70M 5213 1s 31m 52s 25m
+38m 71M 5219 1s 32m 51s 5m
+48m 73M 5311 1s 41m 62s 5m
 
 P[55] * P[55]
-7h 148M 1s 5h 2m 2h
-13h 146M 1s 12h 2m 50m

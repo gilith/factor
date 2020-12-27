@@ -107,6 +107,7 @@ powerFactorInteger f cfg n r = do
 mergeFactorInteger ::
     RandomGen r => IntegerFactorer r ->
     Config -> Integer -> Integer -> r -> Verbose ([PrimePower],r)
+mergeFactorInteger f cfg m n r | n < m = mergeFactorInteger f cfg n m r
 mergeFactorInteger f cfg m n r = do
     (pks,r') <- powerFactorInteger f cfg m r
     (pks',r'') <- powerFactorInteger f cfg n r'

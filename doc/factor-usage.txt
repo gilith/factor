@@ -1,6 +1,7 @@
 Usage: factor [options] "expression to factor"
       --trial=N       Set trial division maximum to N
       --ecm-primes=N  Limit ECM to first N primes (use - for no limit)
+      --nfs-chars=N   Use N quadratic characters in NFS
       --nfs-verbose   Show complete lists in NFS verbose messages
   -v  --verbose       Enable verbose messages
   -t  --timestamp     Prepend verbose messages with timestamp

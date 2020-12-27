@@ -211,14 +211,17 @@ ecmProfile exe = do
 -- Profiling NFS
 -------------------------------------------------------------------------------
 
+type Smooth = Integer
+
 nfsArgs :: String
 nfsArgs = " -vt --ecm-primes 0"
 
-nfsParse :: [String] -> Maybe (Profile,[Seconds])
+nfsParse :: [String] -> Maybe (Profile,Smooth,[Seconds])
 nfsParse out0 = do
     (t0,out1) <- parseMatch (matchTimestampRegex "Cranking up the number field sieve [(]NFS[)]$") out0
     -- Select polynomial and factor bases
     (t1,out2) <- parseMatch (matchTimestampRegex "Searching for [[:digit:]+]+ = [[:digit:]]+ smooth elements of Z[[]w[]]:$") out1
+    (s,_) <- parseMatch (matchMap matchRead $ matchRegex "Searching for [[:digit:]+]+ = ([[:digit:]]+) smooth elements of Z[[]w[]]:$") out1
     -- Sieve for smooth elements
     (t2,out3) <- parseMatch (matchTimestampRegex "Derivative of f is f'") out2
     -- Gaussian elimination
@@ -226,18 +229,18 @@ nfsParse out0 = do
     -- Factorization
     (t4,out5) <- parseMatch (matchTimestampRegex "NFS factorization: ") out4
     prof <- parseProfile out5
-    return (prof, [diffUtc t1 t0, diffUtc t2 t1, diffUtc t3 t2, diffUtc t4 t3])
+    return (prof, s, [diffUtc t1 t0, diffUtc t2 t1, diffUtc t3 t2, diffUtc t4 t3])
 
-nfsInstance :: String -> IO (Maybe (Profile,[Seconds]))
+nfsInstance :: String -> IO (Maybe (Profile,Smooth,[Seconds]))
 nfsInstance exe = do
     out <- factorOutput exe
     --putStr $ unlines out
     return $ nfsParse out
 
-nfsReport :: Maybe (Profile,[Seconds]) -> String
+nfsReport :: Maybe (Profile,Smooth,[Seconds]) -> String
 nfsReport Nothing = "Failed"
-nfsReport (Just (prof,ts)) =
-    reportProfile prof ++ concatMap (\s -> " " ++ timeReport s) ts
+nfsReport (Just (prof,s,ts)) =
+    reportProfile prof ++ " " ++ show s ++ concatMap (\t -> " " ++ timeReport t) ts
 
 nfsSize :: String -> Width -> Int -> IO ()
 nfsSize exe w n = do
@@ -256,6 +259,7 @@ nfsProfile exe = do
     putStrLn "Each invocation generates a line of results with the following fields:"
     putStrLn "- Total time spent"
     putStrLn "- Peak memory usage"
+    putStrLn "- Number of smooth elements"
     putStrLn "- Time spent selecting polynomial and factor bases"
     putStrLn "- Time spent sieving for smooth elements"
     putStrLn "- Time spent in Gaussian elimination"

@@ -23,11 +23,12 @@ Installing the factor package requires [cabal][]:
     cabal install --enable-tests
 
 The factor package contains an executable called `factor`, which is
-run as follows:
+[run][factor usage] as follows:
 
     Usage: factor [options] "expression to factor"
           --trial=N       Set trial division maximum to N
           --ecm-primes=N  Limit ECM to first N primes (use - for no limit)
+          --nfs-chars=N   Use N quadratic characters in NFS
           --nfs-verbose   Show complete lists in NFS verbose messages
       -v  --verbose       Enable verbose messages
       -t  --timestamp     Prepend verbose messages with timestamp
@@ -73,7 +74,7 @@ usage][Number field sieve memory] of the number field sieve:
 References
 ----------
 
-The code comments contain many references to descriptions of the
+Comments in the code contain references to descriptions of the
 specific implemented algorithms, and in addition the following
 references helped with general understanding of the number field
 sieve:
@@ -91,6 +92,7 @@ sieve:
 [Elliptic curve method]: https://github.com/gilith/factor/blob/master/doc/ecm-example.txt "Elliptic curve method factoring example"
 [Elliptic curve method profile]: https://github.com/gilith/factor/blob/master/doc/ecm-profile.txt "Elliptic curve method profile"
 [factor package]: https://hackage.haskell.org/package/factor "factor package"
+[factor usage]: https://github.com/gilith/factor/blob/master/doc/factor-usage.txt "factor usage information"
 [Haskell]: https://www.haskell.org/ "Haskell"
 [Jensen2005]: http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.693.9784 "Integer Factorization"
 [MIT License]: https://github.com/gilith/factor/blob/master/LICENSE "MIT License"

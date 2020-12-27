@@ -32,27 +32,7 @@ Already multiplied 29 curve points by first 124 primes
 Multiplying by next 41 primes to achieve target of 165
 Already multiplied 29 curve points by first 165 primes
 Multiplying by next 55 primes to achieve target of 220
-Current number of curve points is 29
-Generating 9 new curve points to achieve target of 38
-Multiplying new curve points by first 220 primes
-Already multiplied 38 curve points by first 220 primes
-Multiplying by next 73 primes to achieve target of 293
-Current number of curve points is 38
-Generating 12 new curve points to achieve target of 50
-Multiplying new curve points by first 293 primes
-Already multiplied 50 curve points by first 293 primes
-Multiplying by next 97 primes to achieve target of 390
-Already multiplied 50 curve points by first 390 primes
-Multiplying by next 130 primes to achieve target of 520
-Current number of curve points is 50
-Generating 16 new curve points to achieve target of 66
-Multiplying new curve points by first 520 primes
-Already multiplied 66 curve points by first 520 primes
-Multiplying by next 173 primes to achieve target of 693
-Current number of curve points is 66
-Generating 22 new curve points to achieve target of 88
-Multiplying new curve points by first 693 primes
-ECM factorization: 201301130512090183 * 201608211420051869
+ECM factorization: 201608211420051869 * 201301130512090183
 Factor target is 58-bit integer 201301130512090183
 Prime: 201301130512090183
 Factor target is 58-bit integer 201608211420051869
@@ -60,5 +40,5 @@ Prime: 201608211420051869
 40583960879376931768709021465702027
 ==
 201301130512090183 * 201608211420051869
-130.55user 0.75system 2:11.65elapsed 99%CPU (0avgtext+0avgdata 6864maxresident)k
-0inputs+48outputs (0major+1813minor)pagefaults 0swaps
+13.73user 0.10system 0:13.89elapsed 99%CPU (0avgtext+0avgdata 4840maxresident)k
+0inputs+8outputs (0major+1308minor)pagefaults 0swaps

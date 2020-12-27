@@ -159,15 +159,33 @@ smoothNfzw f m rfb afb = Nfzw.filterValid (isSmoothNfzw f m rfb afb)
 -- Quadratic characters
 -------------------------------------------------------------------------------
 
-quadraticCharacters :: Zx -> [Nfzw] -> [Ideal] -> [Ideal]
-quadraticCharacters f' xs = filter nonZeroChar
+data QuadraticCharacterConfig =
+    FixedQuadraticCharacterConfig Int
+  | LinearQuadraticCharacterConfig Int Double
+  deriving (Eq,Ord,Show)
+
+defaultQuadraticCharacterConfig :: QuadraticCharacterConfig
+defaultQuadraticCharacterConfig = LinearQuadraticCharacterConfig 20 0.5
+
+quadraticCharacters :: QuadraticCharacterConfig -> Integer -> Int
+quadraticCharacters (FixedQuadraticCharacterConfig q) _ = q
+quadraticCharacters (LinearQuadraticCharacterConfig m r) n =
+    max m $ floor (r * fromIntegral (widthInteger n))
+
+isQuadraticCharacter :: Zx -> [Nfzw] -> Ideal -> Bool
+isQuadraticCharacter f' xs i =
+    Gfpx.evaluate q fq' s /= 0 &&
+    all (\x -> not (Nfzw.inIdeal x i)) xs
   where
-    nonZeroChar i =
-        Gfpx.evaluate q fq' s /= 0 &&
-        all (\x -> not (Nfzw.inIdeal x i)) xs
-      where
-        fq' = Gfpx.fromZx q f'
-        (s,q) = i
+    fq' = Gfpx.fromZx q f'
+    (s,q) = i
+
+nextQuadraticCharacter :: Zx -> [Nfzw] -> [Ideal] -> (Ideal,[Ideal])
+nextQuadraticCharacter f' xs (i : il) | isQuadraticCharacter f' xs i = (i,il)
+nextQuadraticCharacter f' xs il = nextQuadraticCharacter f' xs (tail il)
+
+takeQuadraticCharacters :: Zx -> [Nfzw] -> Int -> [Ideal] -> ([Ideal],[Ideal])
+takeQuadraticCharacters f' xs = unfoldlN $ nextQuadraticCharacter f' xs
 
 isQuadraticResidue :: Ideal -> Nfzw -> Bool
 isQuadraticResidue (s,q) x =
@@ -178,6 +196,9 @@ isQuadraticResidue (s,q) x =
 
 notQuadraticResidue :: Ideal -> Nfzw -> Bool
 notQuadraticResidue i = not . isQuadraticResidue i
+
+productIsQuadraticResidue :: Ideal -> [Nfzw] -> Bool
+productIsQuadraticResidue i = foldr (\x b -> isQuadraticResidue i x == b) True
 
 -------------------------------------------------------------------------------
 -- Creating the matrix
@@ -254,38 +275,62 @@ rationalSquareRoot n m f' rps xs =
                 Nothing -> error "smooth remainder is not a square"
                 Just r -> r
 
-algebraicSquareRoot :: Integer -> Zx -> Integer -> Zx -> [Nfzw] -> [Integer]
-algebraicSquareRoot n f m f' sq =
-    map crtSqrt $
-    concatMap allSigns $
-    zip (iterate ((*) p) p) $
-    List.transpose $
-    map liftSqrt rcs
+algebraicSquareRoot ::
+    Integer -> Zx -> Integer -> Zx -> [Ideal] -> [Nfzw] ->
+    (Integer -> Bool) -> Verbose (Maybe Integer)
+algebraicSquareRoot n f m f' qil0 sq sameSquare =
+    case mapMaybe splits (tail Prime.primes) of
+      [] ->
+          error "ran out of primes"
+      (p,Nothing) : _ -> do
+          comment $ "Working modulo " ++ show p ++
+                    " shows that no algebraic square root exists"
+          pure Nothing
+      (p, Just rcs) : _ -> do
+          comment $ "Reducing modulo prime " ++ show p ++
+                    "\n  totally splits f(x) as " ++
+                    concatMap (\(r,_) -> "(x - " ++ show r ++ ")") rcs ++
+                    "\n  and algebraic square root is " ++
+                    show (map (Prime.toSmallestInteger p . snd) rcs)
+          checkSqrt p (1 :: Int) p qil0 $ List.transpose $ map (liftSqrt p) rcs
   where
-    (p,rcs) = head $ mapMaybe splits (tail Prime.primes)
-
     evalSquare pk x = Prime.product pk (fx2' : sqx)
       where
         fx2' = Prime.square pk (Gfpx.evaluate pk (Gfpx.fromZx pk f') x)
         sqx = map (Prime.fromInteger pk . Nfzw.toInteger x) sq
 
-    splits q = do
-        rs <- Gfpx.totallySplits f q
-        let cs = map (sqrtModQ . evalSquare q) rs
-        guard $ all ((/=) 0) cs
-        return (q, zip rs cs)
-      where
-        sqrtModQ x | Prime.nonResidue q x = error "quadratic non-residue"
-        sqrtModQ x | otherwise = Prime.sqrt q x
+    splits p = do
+        rs <- Gfpx.totallySplits f p
+        ss <- pure $ map (evalSquare p) rs
+        if any (Prime.nonResidue p) ss then pure (p,Nothing) else do
+          cs <- pure $ map (Prime.sqrt p) ss
+          guard $ all ((/=) 0) cs
+          pure (p, Just (zip rs cs))
 
-    liftSqrt (r,c) = zip (map snd rks) (snd $ List.mapAccumL lift c (tail rks))
+    liftSqrt p (r,c) =
+        zip (map snd rks) (snd $ List.mapAccumL lift c (tail rks))
       where
         lift ck (pk,rk) = ((ck - ((ck*ck - evalSquare pk rk) * a)) `mod` pk, ck)
         rks = Gfpx.liftRoot f p r
         a = Prime.invert p (Prime.multiply p 2 c)
 
-    allSigns (_,[]) = error "no roots"
-    allSigns (pk, rck : rcks) = map (\z -> (pk, rck : z)) $ foldr pm [[]] rcks
+    checkSqrt _ _ _ _ [] = error "ran out of lifted square roots"
+    checkSqrt p k pk qil (rcks : rcksl) =
+        case filter sameSquare $ map crtSqrt $ allSigns pk rcks of
+          [] -> if ok then checkSqrt p (k + 1) (p * pk) qil' rcksl else do
+              comment $ "Quadratic character " ++ show qc ++
+                        " shows that no algebraic square root exists"
+              pure Nothing
+            where
+              (qc,qil') = nextQuadraticCharacter f' sq qil
+              ok = productIsQuadraticResidue qc sq
+          asq : _ -> do
+              comment $ "Lifted algebraic square root modulo " ++
+                        show p ++ "^" ++ show k ++ " has same square modulo n"
+              pure $ Just asq
+
+    allSigns _ [] = error "no roots"
+    allSigns pk (rck : rcks) = map (\z -> (pk, rck : z)) $ foldr pm [[]] rcks
       where pm (rk,ck) z = map ((:) (rk,ck)) z ++ map ((:) (rk, pk - ck)) z
 
     crtSqrt (pk,rcks) =
@@ -313,7 +358,7 @@ data Config =
       {polynomialConfig :: PolynomialConfig,
        rationalFactorBaseConfig :: FactorBaseConfig,
        algebraicFactorBaseConfig :: FactorBaseConfig,
-       quadraticCharacterConfig :: Int,
+       quadraticCharacterConfig :: QuadraticCharacterConfig,
        extraRankConfig :: Int,
        verboseConfig :: Bool}
   deriving (Eq,Ord,Show)
@@ -324,7 +369,7 @@ defaultConfig =
       {polynomialConfig = defaultPolynomialConfig,
        rationalFactorBaseConfig = OptimalFactorBase 3.0,
        algebraicFactorBaseConfig = OptimalFactorBase 10.0,
-       quadraticCharacterConfig = 20,
+       quadraticCharacterConfig = defaultQuadraticCharacterConfig,
        extraRankConfig = 5,
        verboseConfig = False}
 
@@ -333,37 +378,38 @@ setVerboseConfig v cfg = cfg {verboseConfig = v}
 
 setQuadraticCharacterConfig :: Maybe Int -> Config -> Config
 setQuadraticCharacterConfig Nothing cfg = cfg
-setQuadraticCharacterConfig (Just q) cfg = cfg {quadraticCharacterConfig = q}
+setQuadraticCharacterConfig (Just q) cfg =
+    cfg {quadraticCharacterConfig = FixedQuadraticCharacterConfig q}
 
 verboseList :: Config -> String -> [String] -> String
 verboseList cfg s = if verboseConfig cfg then unabbrevList else abbrevList s
 
 factorSquareRoots ::
-    Config -> Integer -> Zx -> Integer -> FactorBase -> Zx -> [[Nfzw]] ->
-    Verbose (Maybe Integer)
-factorSquareRoots _ _ _ _ _ _ [] = do
+    Config -> Integer -> Zx -> Integer -> FactorBase -> Zx -> [Ideal] ->
+    [[Nfzw]] -> Verbose (Maybe Integer)
+factorSquareRoots _ _ _ _ _ _ _ [] = do
     comment $ "No more square products, NFS factorization failed"
     pure Nothing
-factorSquareRoots cfg n f m rfb f' (sq : sqs) = do
+factorSquareRoots cfg n f m rfb f' qil (sq : sqs) = do
     comment $ "Considering square product " ++
               (if length sq == 1 then "consisting of a single element of Z[w]"
                else "of " ++ show (length sq) ++ " elements of Z[w]") ++
               ":" ++ verboseList cfg "elements" (map show sq)
     rsq <- pure $ rationalSquareRoot n m f' rfb sq
-    comment $ "Rational square root is " ++ show rsq
+    comment $ "Rational square root modulo n is " ++ show rsq
     sameSquare <- pure $ (==) (Prime.square n rsq) . Prime.square n
-    (i,asq) <- pure $ head $ filter (sameSquare . snd) $
-               zip ([0..] :: [Int]) $ algebraicSquareRoot n f m f' sq
-    comment $ "Element " ++ show i ++ " of candidate algebraic " ++
-              "square roots has same square modulo n"
-    comment $ "Algebraic square root is " ++ show asq
-    g <- pure $ gcd n (rsq + asq)
-    s <- pure $ 1 < g && g < n
-    comment $ "Greatest common divisor of n and " ++
-              "sum of square roots is " ++
-              (if g == n then "n" else show g) ++
-              (if s then "" else " (bad luck)")
-    if s then pure (Just g) else factorSquareRoots cfg n f m rfb f' sqs
+    asqm <- algebraicSquareRoot n f m f' qil sq sameSquare
+    case asqm of
+      Nothing -> factorSquareRoots cfg n f m rfb f' qil sqs
+      Just asq -> do
+        comment $ "Algebraic square root modulo n is " ++ show asq
+        g <- pure $ gcd n (rsq + asq)
+        s <- pure $ 1 < g && g < n
+        comment $ "Greatest common divisor of n and " ++
+                  "sum of square roots is " ++
+                  (if g == n then "n" else show g) ++
+                  (if s then "" else " (bad luck)")
+        if s then pure (Just g) else factorSquareRoots cfg n f m rfb f' qil sqs
 
 factorWithPolynomial ::
     Config -> Integer -> Zx -> Integer -> Verbose (Maybe Integer)
@@ -379,7 +425,7 @@ factorWithPolynomial cfg n f m = do
               " first degree prime ideals:\n" ++
               "  (r,p) such that f(r) = 0 (mod p)" ++
               verboseList cfg "prime ideals" (map show ail)
-    qcs <- pure $ quadraticCharacterConfig cfg
+    qcs <- pure $ quadraticCharacters (quadraticCharacterConfig cfg) n
     extra <- pure $ extraRankConfig cfg
     cols <- pure $ 1 + length rfb + length ail + qcs
     xs <- pure $ take (cols + extra) (smoothNfzw f m rfb afb)
@@ -396,7 +442,7 @@ factorWithPolynomial cfg n f m = do
                             show (algebraicNorm f x) ++ ")") xs)
     f' <- pure $ Zx.derivative f
     comment $ "Derivative of f is f'(x) = " ++ show f'
-    qcl <- pure $ take qcs (quadraticCharacters f' xs qil)
+    (qcl,qil') <- pure $ takeQuadraticCharacters f' xs qcs qil
     comment $ "Generated " ++ show qcs ++ " quadratic characters " ++
               "nonzero for f' and all smooth elements:" ++
               verboseList cfg "quadratic characters" (map show qcl)
@@ -404,7 +450,7 @@ factorWithPolynomial cfg n f m = do
     sql <- pure $ map (map (\i -> xs !! i)) (gaussianElimination rows)
     comment $ "Gaussian elimination resulted in " ++ show (length sql) ++
               " square products"
-    factorSquareRoots cfg n f m rfb f' sql
+    factorSquareRoots cfg n f m rfb f' qil' sql
 
 factor :: Config -> Integer -> Verbose (Maybe Integer)
 factor cfg n = do

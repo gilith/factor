@@ -21,12 +21,16 @@ PROFILE = \
 # Phony targets
 ###############################################################################
 
+.PHONY: default
 default: doc profile
 
+.PHONY: doc
 doc: $(DOC)
 
+.PHONY: profile
 profile: $(PROFILE)
 
+.PHONY: clean
 clean:
 	rm -f $(DOC) $(PROFILE)
 
@@ -52,6 +56,8 @@ swinnerton-dyer.txt: swinnerton-dyer.hs
 ###############################################################################
 # Profiling
 ###############################################################################
+
+.PRECIOUS: $(PROFILE)
 
 ecm-profile.txt: factor-profile.hs
 	$(RUNHASKELL) $< ECM $(FACTOR) >$@

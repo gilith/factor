@@ -302,6 +302,15 @@ tripleton x y z = [x,y,z]
 -- Unfolding lists a fixed number of times
 -------------------------------------------------------------------------------
 
+unfoldlN :: (b -> (a,b)) -> Int -> b -> ([a],b)
+unfoldlN f = go
+  where
+    go 0 s = ([],s)
+    go n s = (x : xs, u)
+      where
+        (x,t) = f s
+        (xs,u) = go (n - 1) t
+
 unfoldrN :: (b -> (a,b)) -> Int -> b -> ([a],b)
 unfoldrN f = go []
   where
