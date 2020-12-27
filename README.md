@@ -8,8 +8,8 @@ and polynomials, implementing the following algorithms:
 - [Elliptic curve method](doc/ecm-example.txt) for finding "small" factors of integers
 - Miller-Rabin probabilistic primality test for integers
 - Berlekamp-Zassenhaus algorithm for factoring integer polynomials
-- Berlekamp algorithm for factoring polynomials over GF(p) (for small primes p)
-- Cantor–Zassenhaus algorithm for factoring polynomials over GF(p) (for arbitrary odd primes p)
+- Berlekamp algorithm for factoring polynomials over GF(*p*) (for small primes *p*)
+- Cantor–Zassenhaus algorithm for factoring polynomials over GF(*p*) (for arbitrary odd primes *p*)
 
 This software is released under the [MIT License](LICENSE).
 
@@ -66,7 +66,7 @@ usage](doc/nfs-memory.png) of the number field sieve:
     cabal clean
     cabal configure --enable-profiling
     cabal build
-    factor +RTS -hc -RTS -v --ecm-primes 0 'P[40] * P[40]'
+    factor +RTS -hc -RTS -v --ecm-primes 0 'P[35] * P[35]'
     hp2ps -e8in -c factor.hp
     gm convert -density 180 factor.ps factor.png
     xview factor.png
