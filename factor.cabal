@@ -4,7 +4,7 @@ category: Number Theory
 synopsis: Factoring integers and polynomials
 license: MIT
 license-file: LICENSE
-cabal-version: >= 1.8.0.2
+cabal-version: >= 1.10
 build-type: Simple
 extra-source-files: README.md
 author: Joe Leslie-Hurd <joe@gilith.com>
