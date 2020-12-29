@@ -15,7 +15,7 @@ import qualified Data.List as List
 import System.Random (RandomGen)
 import Text.Parsec ((<|>),Parsec,ParseError)
 import qualified Text.Parsec as Parsec
-import Text.PrettyPrint ((<>),(<+>),Doc)
+import Text.PrettyPrint ((<+>),Doc)
 import qualified Text.PrettyPrint as PP
 
 import Factor.Prime (Gfp,Prime,PrimePower)
@@ -514,24 +514,24 @@ fromString s = case parse s of { Left _ -> Nothing ;  Right t -> Just t }
 -------------------------------------------------------------------------------
 
 indexToDoc :: Index -> Doc
-indexToDoc i = PP.char '_' <> PP.int i
+indexToDoc i = PP.char '_' PP.<> PP.int i
 
 widthToDoc :: Width -> Doc
 widthToDoc = PP.brackets . PP.int
 
 atomicToDoc :: Term -> Doc
 atomicToDoc (IntegerTerm n) = PP.integer n
-atomicToDoc (PrimeIndexTerm w) = PP.char 'P' <> indexToDoc w
-atomicToDoc (NumberWidthTerm w) = PP.char 'N' <> widthToDoc w
-atomicToDoc (PrimeWidthTerm w) = PP.char 'P' <> widthToDoc w
-atomicToDoc (CompositeWidthTerm w) = PP.char 'C' <> widthToDoc w
+atomicToDoc (PrimeIndexTerm w) = PP.char 'P' PP.<> indexToDoc w
+atomicToDoc (NumberWidthTerm w) = PP.char 'N' PP.<> widthToDoc w
+atomicToDoc (PrimeWidthTerm w) = PP.char 'P' PP.<> widthToDoc w
+atomicToDoc (CompositeWidthTerm w) = PP.char 'C' PP.<> widthToDoc w
 atomicToDoc (VarTerm v) = PP.text v
 atomicToDoc tm = PP.parens (toDoc tm)
 
 expToDoc :: Term -> Doc
 expToDoc = PP.fcat . strip
   where
-    strip (ExpTerm t u) = (atomicToDoc t <> PP.char '^') : strip u
+    strip (ExpTerm t u) = (atomicToDoc t PP.<> PP.char '^') : strip u
     strip t = [atomicToDoc t]
 
 prodToDoc :: Term -> Doc
@@ -541,7 +541,7 @@ prodToDoc = strip []
     strip l t = PP.fsep (expToDoc t : l)
 
 negateToDoc :: Term -> Doc
-negateToDoc (NegateTerm t) = PP.char '-' <> prodToDoc t
+negateToDoc (NegateTerm t) = PP.char '-' PP.<> prodToDoc t
 negateToDoc tm = prodToDoc tm
 
 sumToDoc :: Term -> Doc
