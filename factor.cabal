@@ -11,7 +11,7 @@ author: Joe Leslie-Hurd <joe@gilith.com>
 maintainer: Joe Leslie-Hurd <joe@gilith.com>
 description:
   This package contains a reference implementation library of
-  factoring algorithms for integers and univariate polynomials.
+  factoring algorithms for integers and univariate polynomials
 
 Library
   build-depends:
