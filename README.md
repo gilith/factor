@@ -1,17 +1,14 @@
-The factor package
-=================
-
 The [factor package][] is a [Haskell][] library for factoring integers
 and polynomials, implementing the following algorithms:
 
-- [Number field sieve](doc/nfs-example.txt) for factoring arbitrary integers
-- [Elliptic curve method](doc/ecm-example.txt) for finding "small" factors of integers
+- [Number field sieve](/doc/nfs-example.txt) for factoring arbitrary integers
+- [Elliptic curve method](/doc/ecm-example.txt) for finding "small" factors of integers
 - Miller-Rabin probabilistic primality test for integers
 - Berlekamp-Zassenhaus algorithm for factoring integer polynomials
 - Berlekamp algorithm for factoring polynomials over GF(*p*) (for small primes *p*)
 - Cantor–Zassenhaus algorithm for factoring polynomials over GF(*p*) (for arbitrary odd primes *p*)
 
-This software is released under the [MIT License](LICENSE).
+This software is released under the [MIT License](/LICENSE).
 
 Install
 -------
@@ -23,7 +20,7 @@ Installing the factor package requires [cabal][]:
     cabal install --enable-tests
 
 The factor package contains an executable called `factor`, which is
-[run](doc/factor-usage.txt) as follows:
+[run](/doc/factor-usage.txt) as follows:
 
     Usage: factor [options] "expression to factor"
           --trial=N       Set trial division maximum to N
@@ -57,11 +54,11 @@ Use [cabal][] to run the test suite:
 Profiles of the time and memory requirements for factoring inputs of
 various sizes:
 
-- [Number field sieve profile](doc/nfs-profile.txt)
-- [Elliptic curve method profile](doc/ecm-profile.txt)
+- [Number field sieve profile](/doc/nfs-profile.txt)
+- [Elliptic curve method profile](/doc/ecm-profile.txt)
 
 The following recipe can be used to [visualize the dynamic memory
-usage](doc/nfs-memory.png) of the number field sieve:
+usage](/doc/nfs-memory.png) of the number field sieve:
 
     cabal clean
     cabal configure --enable-profiling

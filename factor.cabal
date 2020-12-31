@@ -6,18 +6,12 @@ license: MIT
 license-file: LICENSE
 cabal-version: >= 1.10
 build-type: Simple
-extra-source-files: README.md
+extra-source-files: README.md doc/ecm-example.txt doc/ecm-param.txt doc/factor-usage.txt doc/nfs-example.txt doc/swinnerton-dyer.txt doc/ecm-profile.txt doc/nfs-profile.txt
 author: Joe Leslie-Hurd <joe@gilith.com>
 maintainer: Joe Leslie-Hurd <joe@gilith.com>
 description:
-  This package implements a library of factoring algorithms, including
-  the number field sieve for factoring arbitrary integers, the
-  elliptic curve method for finding small factors of integers, the
-  Miller-Rabin probabilistic primality test for integers, the
-  Berlekamp-Zassenhaus algorithm for factoring integer polynomials,
-  the Berlekamp algorithm for factoring polynomials over GF(p) (for
-  small primes p), and the Cantor–Zassenhaus algorithm for factoring
-  polynomials over GF(p) (for arbitrary odd primes p).
+  This package contains a reference implementation library of
+  factoring algorithms for integers and univariate polynomials.
 
 Library
   build-depends:
