@@ -21,7 +21,6 @@ import Factor.Prime (Gfp,Prime)
 import qualified Factor.Prime as Prime
 import Factor.Term (Term(..),Var)
 import qualified Factor.Term as Term
---import Factor.Util
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 

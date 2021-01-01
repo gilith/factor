@@ -12,7 +12,6 @@ where
 
 import qualified Data.List as List
 import System.Random (RandomGen)
---import qualified System.Random as Random
 
 import qualified Factor.Bz as Bz
 import qualified Factor.Ec as Ec
@@ -25,7 +24,6 @@ import Factor.Term (Term(..))
 import qualified Factor.Term as Term
 import Factor.Util
 import Factor.Value (Value(..))
---import qualified Factor.Value as Value
 import Factor.Zx (Zx)
 import qualified Factor.Zx as Zx
 

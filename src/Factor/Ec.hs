@@ -10,8 +10,6 @@ portability: portable
 module Factor.Ec
 where
 
---import Control.Monad (filterM)
---import qualified Data.List as List
 import System.Random (RandomGen)
 import qualified System.Random as Random
 
@@ -21,7 +19,6 @@ import Factor.Prime (Prime,Gfp)
 import qualified Factor.Prime as Prime
 import Factor.Util
 import Factor.Zx ()
---import qualified Factor.Zx as Zx
 
 -------------------------------------------------------------------------------
 -- Elliptic curves

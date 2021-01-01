@@ -14,7 +14,6 @@ import Control.Monad (guard)
 import qualified Data.IntSet as IntSet
 import qualified Data.List as List
 import Data.Maybe (isNothing,mapMaybe)
---import Debug.Trace (trace)
 
 import qualified Factor.Bz as Bz
 import qualified Factor.Gfpx as Gfpx
