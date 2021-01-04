@@ -96,3 +96,17 @@ P[50] * P[50]
 48m 73M 5311 1s 41m 62s 5m
 
 P[55] * P[55]
+6h 145M 7247 Instant 5h 2m 95m
+29h 144M 7121 1s 28h 2m 109m
+18h 146M 7096 Instant 12h 2m 5h
+3h 126M 7165 1s 2h 2m 31m
+20h 146M 7559 1s 19h 2m 58m
+12h 148M 7347 1s 11h 2m 51m
+3h 142M 7418 Instant 3h 2m 39m
+2h 133M 7431 1s 74m 2m 50m
+6h 145M 7224 1s 3h 2m 2h
+10h 142M 7012 1s 8h 2m 88m
+
+P[60] * P[60]
+42h 231M 9913 1s 40h 6m 2h
+25h 239M 10095 1s 22h 6m 2h
