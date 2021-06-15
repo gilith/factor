@@ -1,6 +1,6 @@
 {- |
 module: Main
-description: Factoring positive integers
+description: Factoring integers and polynomials
 license: MIT
 
 maintainer: Joe Leslie-Hurd <joe@gilith.com>
@@ -14,7 +14,6 @@ where
 import Data.Char (isSpace)
 import Data.List (dropWhileEnd)
 import Data.Version (showVersion)
-import Paths_factor (version)
 import System.Console.GetOpt
 import System.Environment (getArgs,getProgName)
 import System.Exit (ExitCode(..),exitWith)
@@ -28,6 +27,7 @@ import Factor.Term (Term)
 import qualified Factor.Term as Term
 import Factor.Util
 import qualified Factor.Value as Value
+import Paths_factor (version)
 
 -------------------------------------------------------------------------------
 -- Options

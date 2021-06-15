@@ -125,7 +125,7 @@ tryRewrite (Rewrite rw) = Rewrite $ \tm ->
 thenRewrite :: Rewrite -> Rewrite -> Rewrite
 thenRewrite (Rewrite rw1) (Rewrite rw2) = Rewrite $ \tm ->
     case rw1 tm of
-      res1 @ (RewriteResult tm') ->
+      res1@(RewriteResult tm') ->
         case rw2 tm' of
           UnchangedResult -> res1
           res2 -> res2
